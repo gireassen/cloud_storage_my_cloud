@@ -32,8 +32,19 @@ export default function Admin() {
     }
   };
 
-  const dl = (id) => {
-    window.location = `/api/files/${id}/download/`;
+  const dl = async (id, name) => {
+    const res = await api(token).get(`/admin/files/${id}/download/`, { responseType: "blob" });
+    const blob = new Blob([res.data]);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const cd = res.headers["content-disposition"];
+    const suggested = cd && /filename="(.+?)"/.exec(cd)?.[1];
+    a.href = url;
+    a.download = suggested || name || "file";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   };
 
   const del = async (id) => {
@@ -82,7 +93,9 @@ export default function Admin() {
                     <td>{new Date(f.uploaded_at).toLocaleString()}</td>
                     <td>{f.user?.username} (id:{f.user?.id})</td>
                     <td style={{display:"flex", gap:8}}>
-                      <button className="btn" onClick={()=>dl(f.id)}>Скачать</button>
+                      <button className="btn" onClick={() => dl(f.id, f.original_name)}>
+                        Скачать
+                      </button>
                       <button className="btn danger" onClick={()=>del(f.id)}>Удалить</button>
                     </td>
                   </tr>

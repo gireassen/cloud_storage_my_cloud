@@ -51,3 +51,15 @@ class AdminFileViewSet(viewsets.ModelViewSet):
     queryset = File.objects.select_related("user").all()
     serializer_class = FileAdminSerializer
     permission_classes = [IsAdminUser]
+
+    @action(detail=True, methods=["get"], url_path="download")
+    def admin_download(self, request, pk=None):
+        file_obj = self.get_object()
+        content = efs.open_decrypted(file_obj.file.name)
+        resp = StreamingHttpResponse(
+            content,
+            content_type=mimetypes.guess_type(file_obj.original_name)[0] or "application/octet-stream",
+        )
+        resp["Content-Disposition"] = f'attachment; filename="{file_obj.original_name}"'
+        resp["Content-Length"] = file_obj.size
+        return resp

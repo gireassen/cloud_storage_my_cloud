@@ -61,9 +61,28 @@ export default function Dashboard() {
     setTimeout(() => setToast(""), 1500);
   };
 
-  const dl = (id) => {
-    window.location = `/api/files/${id}/download/`;
+  const dl = async (id, name) => {
+    try {
+      const res = await api(token).get(`/files/${id}/download/`, { responseType: "blob" });
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+
+      // берем имя из заголовка fallback — original_name
+      const cd = res.headers["content-disposition"];
+      const suggested = cd && /filename="(.+?)"/.exec(cd)?.[1];
+      a.href = url;
+      a.download = suggested || name || "file";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setToast("Ошибка скачивания");
+      setTimeout(() => setToast(""), 1600);
+    }
   };
+
 
   if (!token)
     return (
@@ -138,7 +157,7 @@ export default function Dashboard() {
                     <td>{f.size}</td>
                     <td>{new Date(f.uploaded_at).toLocaleString()}</td>
                     <td style={{ display: "flex", gap: 8 }}>
-                      <button className="btn" onClick={() => dl(f.id)}>
+                      <button className="btn" onClick={() => dl(f.id, f.original_name)}>
                         Скачать
                       </button>
                       <button className="btn" onClick={() => link(f.id)}>
