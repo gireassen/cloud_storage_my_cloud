@@ -1,0 +1,131 @@
+
+:root{
+  --bg:#0b0e14;
+  --surface:#111625;
+  --text:#e8eef8;
+  --muted:#9fb0c9;
+  --primary:#5b8cff;
+  --primary-900:#2d4ea3;
+  --border:#1c2437;
+  --success:#2dc071;
+  --danger:#ef476f;
+  --warning:#f7b801;
+  --radius:14px;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{
+  margin:0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif;
+  background: linear-gradient(180deg, #0b0e14 0%, #0b0e14 30%, #0e1422 100%);
+  color:var(--text);
+}
+
+a{color:var(--primary); text-decoration:none}
+a:hover{text-decoration:underline}
+
+.container{
+  max-width:1100px;
+  margin:0 auto;
+  padding:24px;
+}
+
+.navbar{
+  position:sticky; top:0; z-index:10;
+  background:rgba(17,22,37,.7);
+  backdrop-filter: blur(10px);
+  border-bottom:1px solid var(--border);
+}
+.navbar-inner{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:12px; padding:14px 24px;
+}
+.brand{display:flex; align-items:center; gap:12px; font-weight:700; letter-spacing:.2px}
+.brand-badge{
+  width:34px; height:34px; border-radius:8px;
+  background:linear-gradient(135deg, var(--primary) 0%, #7ea2ff 100%);
+  box-shadow:0 6px 20px rgba(91,140,255,.35);
+}
+.nav-links{display:flex; gap:14px; align-items:center}
+.nav-links a{padding:8px 12px; border-radius:10px}
+.nav-links a.active, .nav-links a:hover{
+  background: rgba(91,140,255,.12);
+  text-decoration:none;
+}
+
+.grid{display:grid; gap:18px}
+.grid.cols-2{grid-template-columns: 1fr 1fr}
+@media (max-width: 900px){ .grid.cols-2{grid-template-columns: 1fr} }
+
+.card{
+  background:linear-gradient(180deg, #111625 0%, #0f1422 100%);
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.card-header{padding:16px 18px; border-bottom:1px solid var(--border); font-weight:600}
+.card-body{padding:18px}
+
+.btn{
+  appearance:none; cursor:pointer;
+  border:none; border-radius:12px;
+  padding:10px 14px; font-weight:600; letter-spacing:.2px;
+  background: linear-gradient(180deg, var(--primary) 0%, #4f7cf0 100%);
+  color:#fff; box-shadow:0 10px 20px rgba(91,140,255,.25);
+  transition: transform .06s ease, filter .2s ease;
+}
+.btn:active{ transform: translateY(1px) }
+.btn.ghost{
+  background: transparent; color: var(--text);
+  border:1px solid var(--border); box-shadow:none;
+}
+.btn.danger{
+  background: linear-gradient(180deg, var(--danger) 0%, #d43e61 100%);
+  box-shadow:0 10px 20px rgba(239,71,111,.25);
+}
+
+.input, .file{
+  width:100%; padding:11px 12px;
+  background:#0d1220; color:var(--text);
+  border:1px solid var(--border); border-radius:12px;
+  outline:none;
+}
+.input::placeholder{color:var(--muted)}
+
+.table{
+  width:100%; border-collapse: collapse; overflow:hidden;
+  border-radius:12px; border:1px solid var(--border);
+}
+.table th, .table td{ padding:12px 14px; border-bottom:1px solid var(--border) }
+.table thead th{ background:#0e1422; color:var(--muted); font-weight:600; text-align:left }
+.table tr:hover td{ background:#0e1526 }
+
+.kbd{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace;
+  font-size:.9rem; background:#0d1220; padding:4px 8px; border:1px solid var(--border);
+  border-radius:8px; color:var(--muted);
+}
+
+.form-row{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+.field{display:flex; flex-direction:column; gap:8px; flex:1}
+
+.center{display:flex; align-items:center; justify-content:center}
+.mt-2{margin-top:8px} .mt-3{margin-top:12px} .mt-4{margin-top:18px} .mt-6{margin-top:28px}
+.mb-2{margin-bottom:8px} .mb-4{margin-bottom:18px}
+
+.toast{
+  position:fixed; right:20px; bottom:20px; z-index:9999;
+  background:#0f1423; border:1px solid var(--border); color:var(--text);
+  padding:12px 14px; border-radius:12px; box-shadow:var(--shadow);
+}
+
+.spinner{
+  width:22px; height:22px; border-radius:50%;
+  border:3px solid #2a3550; border-top-color: var(--primary);
+  animation: spin 1s linear infinite;
+}
+@keyframes spin{ to { transform: rotate(360deg) } }
+
+.muted{color:var(--muted)}

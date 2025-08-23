@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: mycloud
+      POSTGRES_USER: mycloud
+      POSTGRES_PASSWORD: password
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./mycloud/backend
+    env_file:
+      - ./env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - backend_storage:/code/storage
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./mycloud/frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+  backend_storage:
