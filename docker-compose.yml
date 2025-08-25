@@ -1,19 +1,26 @@
 version: "3.9"
 
+networks:
+  appnet:
+    driver: bridge
+
 services:
   db:
-    image: postgres:14
+    image: postgres:17
     environment:
       POSTGRES_DB: mycloud
       POSTGRES_USER: mycloud
       POSTGRES_PASSWORD: password
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - ./pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks: [appnet]
 
   backend:
     build: ./mycloud/backend
@@ -26,6 +33,10 @@ services:
       - backend_storage:/code/storage
     expose:
       - "8000"
+    networks:
+      appnet:
+        aliases:
+          - backend
 
   frontend:
     build: ./mycloud/frontend
@@ -33,7 +44,19 @@ services:
       - "8080:80"
     depends_on:
       - backend
+    networks:
+      appnet:
+        aliases:
+          - frontend
 
 volumes:
-  db_data:
   backend_storage:
+
+
+# mkdir -p ./pgdata
+# chmod 700 ./pgdata
+# podman-compose up -d --build
+# podman-compose down -v
+
+# podman-compose logs -f
+# podman-compose exec backend bash  
