@@ -43,3 +43,60 @@ class MeView(generics.RetrieveAPIView):
     serializer_class = UserSerializer
     def get_object(self):
         return self.request.user
+
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes
+from django.core.mail import send_mail
+from django.conf import settings
+from .serializers import PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def password_reset_request(request):
+    serializer = PasswordResetRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    email = serializer.validated_data["email"]
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({"detail": "Если email зарегистрирован, письмо отправлено"}, status=status.HTTP_200_OK)
+
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+
+    if getattr(settings, "FRONTEND_RESET_URL", ""):
+        link = f"{settings.FRONTEND_RESET_URL}?uid={uid}&token={token}"
+    else:
+        link = request.build_absolute_uri(f"/api/auth/password/reset-confirm/?uid={uid}&token={token}")
+
+    send_mail(
+        subject="Сброс пароля — MyCloud",
+        message=f"Для сброса пароля перейдите по ссылке: {link}",
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+        recipient_list=[email],
+        fail_silently=True,
+    )
+    return Response({"detail": "Если email зарегистрирован, письмо отправлено"}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def password_reset_confirm(request):
+    serializer = PasswordResetConfirmSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    uid = serializer.validated_data["uid"]
+    token = serializer.validated_data["token"]
+    new_password = serializer.validated_data["new_password"]
+    try:
+        uid_int = int(urlsafe_base64_decode(uid).decode())
+        user = User.objects.get(pk=uid_int)
+    except Exception:
+        return Response({"detail": "Неверная ссылка"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not default_token_generator.check_token(user, token):
+        return Response({"detail": "Неверный или истёкший токен"}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.set_password(new_password)
+    user.save()
+    return Response({"detail": "Пароль обновлён"}, status=status.HTTP_200_OK)
