@@ -4,6 +4,10 @@ from django.contrib.auth.password_validation import validate_password
 
 User = get_user_model()
 
+class SessionLoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField()
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -31,7 +35,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
-    new_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8, max_length=128)
 
     def validate_new_password(self, value):
         validate_password(value)
@@ -44,7 +48,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     uid = serializers.CharField()
     token = serializers.CharField()
-    new_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8, max_length=128)
 
     def validate_new_password(self, value):
         validate_password(value)
