@@ -31,8 +31,9 @@ services:
         condition: service_healthy
     volumes:
       - backend_storage:/code/storage
-    expose:
-      - "8000"
+      - backend_logs:/code/logs
+    ports:
+      - "8000:8000"
     networks:
       appnet:
         aliases:
@@ -51,6 +52,7 @@ services:
 
 volumes:
   backend_storage:
+  backend_logs:
 
 
 # mkdir -p ./pgdata
