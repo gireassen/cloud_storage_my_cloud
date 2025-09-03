@@ -14,7 +14,7 @@ class FileUploadSerializer(serializers.Serializer):
     def validate_file(self, f):
         max_size = getattr(settings, "MAX_UPLOAD_SIZE", 100*1024*1024)
         if f.size > max_size:
-            raise serializers.ValidationError("Файл слишком большой")
+            raise serializers.ValidationError(f"Размер файла превышает лимит {max_size} байт")
         return f
 
 

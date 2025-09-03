@@ -12,10 +12,13 @@ from .models import Link
 from .serializers import LinkSerializer, LinkCreateSerializer
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
-from rest_framework.decorators import permission_classes as drf_permission_classes
+from rest_framework.decorators import permission_classes as drf_permission_classes, throttle_classes
+from rest_framework.throttling import AnonRateThrottle
 
 efs = EncryptedFileSystemStorage()
 
+class PublicLinkThrottle(AnonRateThrottle):
+    rate = "60/min"
 
 class LinkViewSet(viewsets.ModelViewSet):
     """
@@ -56,6 +59,7 @@ class LinkViewSet(viewsets.ModelViewSet):
 )
 @api_view(["GET"])
 @drf_permission_classes([AllowAny])
+@throttle_classes([PublicLinkThrottle])
 def public_download(request, token: str):
     link = get_object_or_404(Link, token=token)
 

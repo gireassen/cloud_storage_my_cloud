@@ -2,8 +2,17 @@ import uuid
 from django.db import models
 from django.conf import settings
 from app.core.storage import EncryptedFileSystemStorage
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 efs = EncryptedFileSystemStorage()
+
+def delete_content_file(sender, instance, **kwargs):
+    if instance.file and efs.exists(instance.file.name):
+        try:
+            efs.delete(instance.file.name)
+        except Exception:
+            pass
 
 def upload_path(instance, filename):
     from datetime import datetime

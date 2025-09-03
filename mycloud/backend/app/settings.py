@@ -19,12 +19,13 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
-    "drf_spectacular",
     "corsheaders",
-    "app.users",
-    "app.files",
-    "app.links",
+    "drf_spectacular",
+    "app.users.apps.UsersConfig",
+    "app.files.apps.FilesConfig",
+    "app.links.apps.LinksConfig",
 ]
+
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -71,15 +72,13 @@ DATABASES = {
 AUTH_USER_MODEL = "users.User"
 
 REST_FRAMEWORK = {
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
-    ),
-}
+    "EXCEPTION_HANDLER": "app.common.exceptions.exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+ }
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "MyCloud API",
