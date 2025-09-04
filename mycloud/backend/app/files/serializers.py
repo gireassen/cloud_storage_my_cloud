@@ -1,11 +1,22 @@
 from rest_framework import serializers
 from django.conf import settings
 from .models import File
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class UserBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "username")
+
 
 class FileSerializer(serializers.ModelSerializer):
+    user = UserBriefSerializer(read_only=True)
     class Meta:
         model = File
-        fields = ("id", "original_name", "size", "uploaded_at", "description")
+        fields = ("id", "original_name", "size", "uploaded_at", "description", "user")
+        read_only_fields = ("id", "size", "uploaded_at", "original_name", "user")
 
 class FileUploadSerializer(serializers.Serializer):
     file = serializers.FileField()

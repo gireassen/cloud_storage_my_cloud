@@ -1,14 +1,14 @@
 from rest_framework import serializers
 from .models import Link
-
+from app.files.serializers import FileSerializer
 
 class LinkSerializer(serializers.ModelSerializer):
-    """Ответ: данные о ссылке + удобный относительный URL."""
-    url = serializers.SerializerMethodField()
-
+    file = FileSerializer(read_only=True)
     class Meta:
         model = Link
-        fields = ("id", "token", "created_at", "expires_at", "url")
+        fields = ("id", "url", "file", "created_at", "expires_at")
+        read_only_fields = ("id", "url", "created_at")
+
 
     def get_url(self, obj):
         # относительный путь публичного скачивания
