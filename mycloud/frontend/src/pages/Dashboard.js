@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { meThunk } from "../store";
 import { api } from "../api";
 
+// ===== helpers =====
 function formatBytes(bytes) {
   if (bytes === 0 || bytes === undefined || bytes === null) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -22,19 +23,54 @@ function toList(data) {
   return [];
 }
 
+// ===== простая модалка =====
+function Modal({ open, title, children, onClose }) {
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: 16,
+      }}
+      onClick={(e) => {
+        // клик по подложке закрывает
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
+      <div
+        className="card"
+        style={{ width: "min(720px, 96vw)", maxHeight: "90vh", overflow: "auto" }}
+      >
+        {title && <div className="card-header">{title}</div>}
+        <div className="card-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const dispatch = useDispatch();
   const token = useSelector((s) => s.auth.token);
   const user = useSelector((s) => s.auth.user);
+
   const [files, setFiles] = useState([]);
   const [file, setFile] = useState(null);
   const [desc, setDesc] = useState("");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState("");
 
-  // сортировка
+  // ===== сортировка =====
   const [sortKey, setSortKey] = useState("id");
   const [sortDir, setSortDir] = useState("desc");
+
   const header = (label, key) => {
     const active = sortKey === key;
     const arrow = active ? (sortDir === "asc" ? "↑" : "↓") : "";
@@ -57,9 +93,9 @@ export default function Dashboard() {
         return (row.original_name || "").toLowerCase();
       case "size":
         return row.size ?? 0;
-      case "created_at":
       case "uploaded_at":
-        return new Date(row.created_at || row.uploaded_at || 0).getTime();
+      case "created_at":
+        return new Date(row.uploaded_at || row.created_at || 0).getTime();
       case "description":
         return (row.description || "").toLowerCase();
       default:
@@ -78,9 +114,10 @@ export default function Dashboard() {
     });
   };
 
-  // инлайн-редактирование описания
-  const [editingId, setEditingId] = useState(null);
-  const [editingText, setEditingText] = useState("");
+  // ===== состояние модалки редактирования =====
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null); // файл
+  const [editText, setEditText] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -101,7 +138,9 @@ export default function Dashboard() {
       const form = new FormData();
       form.append("file", file);
       if (desc) form.append("description", desc);
-      await api(token).post("/files/", form, { headers: { "Content-Type": "multipart/form-data" } });
+      await api(token).post("/files/", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       setFile(null);
       setDesc("");
       await loadFiles();
@@ -148,25 +187,30 @@ export default function Dashboard() {
     }
   };
 
-  const startEdit = (f) => {
-    setEditingId(f.id);
-    setEditingText(f.description || "");
+  const openEdit = (f) => {
+    setEditTarget(f);
+    setEditText(f.description || "");
+    setEditOpen(true);
   };
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditingText("");
+  const closeEdit = () => {
+    setEditOpen(false);
+    setEditTarget(null);
+    setEditText("");
   };
-  const saveDescription = async (id) => {
-    try {
-      await api(token).patch(`/files/${id}/`, { description: editingText });
-      // локально обновим без повторной загрузки
-      setFiles((prev) => prev.map((x) => (x.id === id ? { ...x, description: editingText } : x)));
-      cancelEdit();
-    } catch {
-      setToast("Не удалось сохранить");
-      setTimeout(() => setToast(""), 1600);
-    }
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    await api(token).patch(`/files/${editTarget.id}/`, { description: editText });
+    setFiles((prev) => prev.map((x) => (x.id === editTarget.id ? { ...x, description: editText } : x)));
+    closeEdit();
   };
+
+  // закрытие по ESC
+  useEffect(() => {
+    if (!editOpen) return;
+    const onKey = (e) => e.key === "Escape" && closeEdit();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editOpen]);
 
   if (!token)
     return (
@@ -234,38 +278,22 @@ export default function Dashboard() {
                     </td>
                     <td>{formatBytes(f.size)}</td>
                     <td>{formatDate(f.uploaded_at || f.created_at)}</td>
-                    <td style={{ maxWidth: 320 }}>
-                      {editingId === f.id ? (
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <input
-                            className="input"
-                            value={editingText}
-                            onChange={(e) => setEditingText(e.target.value)}
-                            placeholder="Описание файла"
-                            style={{ flex: 1 }}
-                          />
-                          <button className="btn" onClick={() => saveDescription(f.id)}>Сохранить</button>
-                          <button className="btn" onClick={cancelEdit}>Отмена</button>
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", display: "inline-block" }}>
-                            {f.description || "—"}
-                          </span>
-                          <button className="btn" title="Редактировать" onClick={() => startEdit(f)}>✎</button>
-                        </div>
-                      )}
+                    <td style={{ maxWidth: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {f.description || "—"}
                     </td>
                     <td style={{ display: "flex", gap: 8 }}>
                       <button className="btn" onClick={() => dl(f.id, f.original_name)}>Скачать</button>
                       <button className="btn" onClick={() => link(f.id)}>Ссылка</button>
+                      <button className="btn" onClick={() => openEdit(f)} title="Редактировать описание">✎</button>
                       <button className="btn danger" onClick={() => del(f.id)}>Удалить</button>
                     </td>
                   </tr>
                 ))}
                 {getSorted(files).length === 0 && (
                   <tr>
-                    <td colSpan="5" style={{ color: "var(--muted)" }}>Пока нет файлов</td>
+                    <td colSpan="5" style={{ color: "var(--muted)" }}>
+                      Пока нет файлов
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -273,6 +301,29 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+
+      {/* модалка редактирования */}
+      <Modal
+        open={editOpen}
+        title={editTarget ? `Описание: ${editTarget.original_name}` : "Описание файла"}
+        onClose={closeEdit}
+      >
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label className="label">Описание</label>
+          <textarea
+            className="input"
+            rows={6}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            placeholder="Введите описание файла"
+            style={{ width: "100%", resize: "vertical", minHeight: 120, padding: "10px 12px" }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button className="btn" onClick={saveEdit}>Сохранить</button>
+          <button className="btn" onClick={closeEdit}>Отмена</button>
+        </div>
+      </Modal>
 
       {toast && <div className="toast">{toast}</div>}
     </div>

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { api } from "../api";
 
-// ——— helpers ———
+// ===== helpers =====
 function formatBytes(bytes) {
   if (bytes === 0 || bytes === undefined || bytes === null) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -17,10 +17,41 @@ function formatDate(iso) {
   return d.toLocaleString();
 }
 function toList(data) {
-  // DRF: может прийти массив или {count, next, previous, results:[...]}
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.results)) return data.results;
   return [];
+}
+
+// ===== простая модалка =====
+function Modal({ open, title, children, onClose }) {
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: 16,
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
+      <div
+        className="card"
+        style={{ width: "min(720px, 96vw)", maxHeight: "90vh", overflow: "auto" }}
+      >
+        {title && <div className="card-header">{title}</div>}
+        <div className="card-body">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export default function Admin() {
@@ -76,6 +107,11 @@ export default function Admin() {
     });
   };
 
+  // модалка редактирования
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editText, setEditText] = useState("");
+
   useEffect(() => {
     if (token) {
       loadUsers();
@@ -121,6 +157,31 @@ export default function Admin() {
     await api(token).delete(`/files/${id}/`);
     await loadFiles();
   };
+
+  const openEdit = (f) => {
+    setEditTarget(f);
+    setEditText(f.description || "");
+    setEditOpen(true);
+  };
+  const closeEdit = () => {
+    setEditOpen(false);
+    setEditTarget(null);
+    setEditText("");
+  };
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    await api(token).patch(`/files/${editTarget.id}/`, { description: editText });
+    setFiles((prev) => prev.map((x) => (x.id === editTarget.id ? { ...x, description: editText } : x)));
+    closeEdit();
+  };
+
+  // ESC закрывает
+  useEffect(() => {
+    if (!editOpen) return;
+    const onKey = (e) => e.key === "Escape" && closeEdit();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editOpen]);
 
   return (
     <div className="grid">
@@ -179,11 +240,12 @@ export default function Admin() {
                     <td>{formatBytes(f.size)}</td>
                     <td>{formatDate(f.uploaded_at || f.created_at)}</td>
                     <td>{f.user ? `${f.user.username} (id:${f.user.id})` : "—"}</td>
-                    <td style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <td style={{ maxWidth: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {f.description || "—"}
                     </td>
                     <td style={{ display: "flex", gap: 8 }}>
                       <button className="btn" onClick={() => dl(f.id, f.original_name)}>Скачать</button>
+                      <button className="btn" onClick={() => openEdit(f)} title="Редактировать описание">✎</button>
                       <button className="btn danger" onClick={() => del(f.id)}>Удалить</button>
                     </td>
                   </tr>
@@ -196,6 +258,29 @@ export default function Admin() {
           </div>
         </div>
       </section>
+
+      {/* модалка редактирования */}
+      <Modal
+        open={editOpen}
+        title={editTarget ? `Описание: ${editTarget.original_name}` : "Описание файла"}
+        onClose={closeEdit}
+      >
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label className="label">Описание</label>
+          <textarea
+            className="input"
+            rows={6}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            placeholder="Введите описание файла"
+            style={{ width: "100%", resize: "vertical", minHeight: 120, padding: "10px 12px" }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button className="btn" onClick={saveEdit}>Сохранить</button>
+          <button className="btn" onClick={closeEdit}>Отмена</button>
+        </div>
+      </Modal>
     </div>
   );
 }
