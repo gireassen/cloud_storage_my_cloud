@@ -159,13 +159,17 @@ export default function Dashboard() {
     await loadFiles();
   };
 
-  const link = async (id) => {
-    const { data } = await api(token).post(`/links/`, { file_id: id });
-    const url = window.location.origin + data.url;
-    navigator.clipboard?.writeText(url);
-    setToast("Ссылка скопирована в буфер обмена");
-    setTimeout(() => setToast(""), 1500);
-  };
+const link = async (id) => {
+  const { data } = await api(token).post(`/links/`, { file_id: id });
+  const url = data.url.startsWith("http")
+    ? data.url
+    : window.location.origin + data.url;
+
+  await navigator.clipboard?.writeText(url);
+  setToast("Ссылка скопирована в буфер обмена");
+  setTimeout(() => setToast(""), 1500);
+};
+
 
   const dl = async (id, name) => {
     try {
