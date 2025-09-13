@@ -2,6 +2,7 @@ import secrets
 from datetime import datetime, timedelta
 from django.db import models
 from app.files.models import File
+from django.utils import timezone
 
 def token_gen():
     return secrets.token_urlsafe(32)
@@ -13,7 +14,7 @@ class Link(models.Model):
     expires_at = models.DateTimeField(null=True, blank=True)
 
     def is_expired(self):
-        return self.expires_at is not None and self.expires_at < datetime.utcnow()
+        return self.expires_at is not None and self.expires_at < timezone.now()
 
     def __str__(self):
         return f"link:{self.id} -> file:{self.file_id}"

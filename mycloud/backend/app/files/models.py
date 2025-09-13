@@ -7,17 +7,17 @@ from django.dispatch import receiver
 
 efs = EncryptedFileSystemStorage()
 
+def upload_path(instance, filename):
+    from datetime import datetime
+    today = datetime.utcnow().strftime("%Y/%m/%d")
+    return f"{instance.user_id}/{today}/{uuid.uuid4().hex}"
+
 def delete_content_file(sender, instance, **kwargs):
     if instance.file and efs.exists(instance.file.name):
         try:
             efs.delete(instance.file.name)
         except Exception:
             pass
-
-def upload_path(instance, filename):
-    from datetime import datetime
-    today = datetime.utcnow().strftime("%Y/%m/%d")
-    return f"{instance.user_id}/{today}/{uuid.uuid4().hex}"
 
 class File(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="files")
@@ -32,3 +32,7 @@ class File(models.Model):
 
     def __str__(self):
         return f"{self.original_name} ({self.user_id})"
+
+@receiver(post_delete, sender=File)
+def _on_file_row_deleted(sender, instance, **kwargs):
+    delete_content_file(sender, instance, **kwargs)
