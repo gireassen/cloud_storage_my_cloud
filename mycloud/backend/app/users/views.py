@@ -2,7 +2,13 @@ from rest_framework import generics, permissions, viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model, login, logout, authenticate
-from .serializers import UserSerializer, RegisterSerializer, ChangePasswordSerializer, PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+from .serializers import (
+    UserSerializer,
+    RegisterSerializer,
+    ChangePasswordSerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
+)
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
@@ -34,7 +40,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def deactivate(self, request, pk=None):
         user = self.get_object()
         user.is_active = False
-        user.save()
+        user.save(update_fields=["is_active"])
         return Response({"status": "deactivated"})
 
     @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
@@ -50,20 +56,49 @@ def session_login(request):
     username = request.data.get("username")
     password = request.data.get("password")
     user = authenticate(request, username=username, password=password)
-    if user:
-        login(request, user)
-        return Response({"detail": "logged_in"})
-    return Response({"detail": "invalid_credentials"}, status=status.HTTP_400_BAD_REQUEST)
+    if user is None:
+        return Response({"detail": "invalid_credentials"}, status=status.HTTP_400_BAD_REQUEST)
+    if not user.is_active:
+        return Response({"detail": "user_inactive"}, status=status.HTTP_400_BAD_REQUEST)
+    login(request, user)
+    return Response({"detail": "logged_in"})
+
 
 @api_view(["POST"])
 def session_logout(request):
     logout(request)
     return Response({"detail": "logged_out"})
 
+
 class MeView(generics.RetrieveAPIView):
     serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
     def get_object(self):
         return self.request.user
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def change_password(request):
+    """
+    Смена пароля в сессии:
+      body: { "old_password": "...", "new_password": "..." }
+    """
+    serializer = ChangePasswordSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    user = request.user
+    old_password = serializer.validated_data["old_password"]
+    new_password = serializer.validated_data["new_password"]
+
+    if not user.check_password(old_password):
+        return Response({"old_password": ["Неверный текущий пароль."]}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.set_password(new_password)
+    user.save()
+    return Response({"detail": "password_changed"})
+
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
@@ -72,7 +107,7 @@ def password_reset_request(request):
     serializer.is_valid(raise_exception=True)
     email = serializer.validated_data["email"]
     try:
-        user = User.objects.get(email=email)
+        user = User.objects.get(email__iexact=email)
     except User.DoesNotExist:
         return Response({"detail": "Если email зарегистрирован, письмо отправлено"}, status=status.HTTP_200_OK)
 
@@ -92,6 +127,7 @@ def password_reset_request(request):
         fail_silently=True,
     )
     return Response({"detail": "Если email зарегистрирован, письмо отправлено"}, status=status.HTTP_200_OK)
+
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])

@@ -4,10 +4,11 @@ import re
 
 User = get_user_model()
 
+USERNAME_RE = re.compile(r'^[A-Za-z][A-Za-z0-9]{3,19}$')
 
 class UserSerializer(serializers.ModelSerializer):
-    files_count = serializers.IntegerField(read_only=True)
-    files_total_size = serializers.IntegerField(read_only=True)
+    files_count = serializers.SerializerMethodField(read_only=True)
+    files_total_size = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = User
@@ -21,6 +22,16 @@ class UserSerializer(serializers.ModelSerializer):
             "files_count",
             "files_total_size",
         )
+
+    def get_files_count(self, obj):
+        val = getattr(obj, "files_count", 0)
+        return int(val or 0)
+
+    def get_files_total_size(self, obj):
+        val = getattr(obj, "files_total_size", 0)
+        return int(val or 0)
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     full_name = serializers.CharField(required=False, allow_blank=True)
@@ -30,14 +41,19 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ("username", "email", "password", "full_name")
 
     def validate_username(self, v: str):
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{3,19}", (v or "")):
+        v = (v or "").strip()
+        if not USERNAME_RE.fullmatch(v):
             raise serializers.ValidationError(
                 "Логин: латиница и цифры, первая — буква, длина 4–20 символов."
             )
+        if User.objects.filter(username__iexact=v).exists():
+            raise serializers.ValidationError("Пользователь с таким логином уже существует.")
         return v
 
     def validate_email(self, v: str):
-        email = serializers.EmailField().to_internal_value(v)
+        email = serializers.EmailField().to_internal_value((v or "").strip().lower())
+        if User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError("Пользователь с таким email уже существует.")
         return email
 
     def _validate_password_policy(self, pwd: str):
@@ -56,17 +72,15 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        full_name = validated_data.pop("full_name", "").strip()
+        full_name = (validated_data.pop("full_name", "") or "").strip()
         user = User(**validated_data)
         if hasattr(user, "full_name"):
             user.full_name = full_name
         elif full_name:
-            try:
-                first, *rest = full_name.split(" ", 1)
-                user.first_name = first
-                user.last_name = rest[0] if rest else ""
-            except Exception:
-                pass
+            parts = full_name.split(" ", 1)
+            user.first_name = parts[0]
+            user.last_name = parts[1] if len(parts) > 1 else ""
+        user.is_active = True
         user.set_password(password)
         user.save()
         return user
@@ -89,6 +103,7 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
+
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
     uid = serializers.CharField()
