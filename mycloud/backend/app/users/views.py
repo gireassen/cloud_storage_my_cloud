@@ -1,61 +1,49 @@
-from django.conf import settings
-from django.contrib.auth import authenticate, get_user_model, login, logout
-from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
-from rest_framework import generics, permissions, status, viewsets
+from rest_framework import generics, permissions, viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-
-from drf_spectacular.utils import extend_schema, OpenApiResponse
-
-from .serializers import (
-    UserSerializer,
-    RegisterSerializer,
-    ChangePasswordSerializer,
-    PasswordResetRequestSerializer,
-    PasswordResetConfirmSerializer,
-    SessionLoginSerializer,
-)
+from django.contrib.auth import get_user_model, login, logout, authenticate
+from .serializers import UserSerializer, RegisterSerializer, ChangePasswordSerializer, PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes
+from django.core.mail import send_mail
+from django.conf import settings
+from drf_spectacular.utils import extend_schema
+from django.db.models import Count, Sum
 
 User = get_user_model()
 
-
 class RegisterView(generics.CreateAPIView):
-    """
-    Публичная регистрация пользователя.
-    """
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
 
-
 class UserViewSet(viewsets.ModelViewSet):
-    """
-    Админ‑интерфейс управления пользователями.
-    """
     queryset = User.objects.all().order_by("-date_joined")
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
 
+    def get_queryset(self):
+        return (
+            User.objects
+            .annotate(files_count=Count("files"), files_total_size=Sum("files__size"))
+            .order_by("-date_joined")
+        )
+
     @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
-    @extend_schema(
-        responses={200: OpenApiResponse(description="Пользователь деактивирован")},
-        description="Деактивация пользователя (is_active = False).",
-    )
     def deactivate(self, request, pk=None):
         user = self.get_object()
         user.is_active = False
-        user.save(update_fields=["is_active"])
+        user.save()
         return Response({"status": "deactivated"})
 
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
+    def toggle_admin(self, request, pk=None):
+        user = self.get_object()
+        user.is_staff = not user.is_staff
+        user.save(update_fields=["is_staff"])
+        return Response({"id": user.id, "is_staff": user.is_staff})
 
-@extend_schema(
-    request=SessionLoginSerializer,
-    responses={200: OpenApiResponse(description="Вход выполнен"), 400: OpenApiResponse(description="Ошибка")},
-    description="Логин на сессиях Django. Принимает username и password.",
-)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def session_login(request):
@@ -67,56 +55,26 @@ def session_login(request):
         return Response({"detail": "logged_in"})
     return Response({"detail": "invalid_credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-
-@extend_schema(
-    responses={200: OpenApiResponse(description="Выход выполнен")},
-    description="Логаут из сессии Django.",
-)
 @api_view(["POST"])
 def session_logout(request):
     logout(request)
     return Response({"detail": "logged_out"})
 
-
 class MeView(generics.RetrieveAPIView):
-    """
-    Данные текущего пользователя (по токену или сессии).
-    """
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    @extend_schema(responses={200: UserSerializer})
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
     def get_object(self):
         return self.request.user
 
-
-@extend_schema(
-    request=PasswordResetRequestSerializer,
-    responses={200: OpenApiResponse(description="Если email зарегистрирован, письмо отправлено")},
-    description=(
-        "Запрос на сброс пароля. Принимает email, генерирует UID и токен. "
-        "Отправляет ссылку либо на фронтенд (FRONTEND_RESET_URL?uid=..&token=..), "
-        "либо на API /api/auth/password/reset-confirm/?uid=..&token=.."
-    ),
-)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def password_reset_request(request):
     serializer = PasswordResetRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     email = serializer.validated_data["email"]
-
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
-        # Не раскрываем, существует ли email — всегда 200
-        return Response(
-            {"detail": "Если email зарегистрирован, письмо отправлено"},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"detail": "Если email зарегистрирован, письмо отправлено"}, status=status.HTTP_200_OK)
 
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
@@ -135,12 +93,6 @@ def password_reset_request(request):
     )
     return Response({"detail": "Если email зарегистрирован, письмо отправлено"}, status=status.HTTP_200_OK)
 
-
-@extend_schema(
-    request=PasswordResetConfirmSerializer,
-    responses={200: OpenApiResponse(description="Пароль обновлён"), 400: OpenApiResponse(description="Ошибка")},  # noqa: E501
-    description="Подтверждение сброса пароля по uid/token и установка нового пароля.",
-)
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def password_reset_confirm(request):
@@ -149,7 +101,6 @@ def password_reset_confirm(request):
     uid = serializer.validated_data["uid"]
     token = serializer.validated_data["token"]
     new_password = serializer.validated_data["new_password"]
-
     try:
         uid_int = int(urlsafe_base64_decode(uid).decode())
         user = User.objects.get(pk=uid_int)
@@ -160,5 +111,5 @@ def password_reset_confirm(request):
         return Response({"detail": "Неверный или истёкший токен"}, status=status.HTTP_400_BAD_REQUEST)
 
     user.set_password(new_password)
-    user.save(update_fields=["password"])
+    user.save()
     return Response({"detail": "Пароль обновлён"}, status=status.HTTP_200_OK)

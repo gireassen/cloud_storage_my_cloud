@@ -105,6 +105,7 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+DEFAULT_FILE_STORAGE = "app.core.storage.EncryptedFileSystemStorage"
 MEDIA_ROOT = os.getenv("STORAGE_PATH", str(BASE_DIR / "storage"))
 MEDIA_URL = "/media/"
 
