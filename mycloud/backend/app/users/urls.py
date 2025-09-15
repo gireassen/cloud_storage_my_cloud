@@ -16,7 +16,9 @@ from .views import (
     MeView,
     password_reset_request,
     password_reset_confirm,
+    change_password,
 )
+
 
 @extend_schema_view(
     post=extend_schema(
@@ -50,5 +52,6 @@ urlpatterns = [
     path("auth/me/", MeView.as_view(), name="me"),
     path("token/", JWTObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", JWTRefreshView.as_view(), name="token_refresh"),
-    path("", include(router.urls)),
+    path('auth/password/change/', change_password),
+    path('', include(router.urls)),
 ]

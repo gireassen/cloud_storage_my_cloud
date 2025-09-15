@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { loginThunk, meThunk } from "../store";
@@ -49,6 +48,9 @@ export default function Login() {
               {loading ? <span className="spinner" /> : "Войти"}
             </button>
             <span className="muted">Нет аккаунта? <Link to="/register">Регистрация</Link></span>
+          </div>
+          <div style={{marginTop:12}}>
+            <a href="/password-reset">Забыли пароль?</a>
           </div>
           {error && <div className="toast" style={{marginTop:16}}>{error}</div>}
         </form>

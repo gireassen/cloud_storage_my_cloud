@@ -41,14 +41,10 @@ function Modal({ open, title, children, onClose }) {
         padding: 16,
       }}
       onClick={(e) => {
-        // клик по подложке закрывает
         if (e.target === e.currentTarget) onClose?.();
       }}
     >
-      <div
-        className="card"
-        style={{ width: "min(720px, 96vw)", maxHeight: "90vh", overflow: "auto" }}
-      >
+      <div className="card" style={{ width: "min(720px, 96vw)", maxHeight: "90vh", overflow: "auto" }}>
         {title && <div className="card-header">{title}</div>}
         <div className="card-body">{children}</div>
       </div>
@@ -67,10 +63,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState("");
 
-  // ===== сортировка =====
-  const [sortKey, setSortKey] = useState("id");
+  // сортировка
+  const [sortKey, setSortKey] = useState("uploaded_at");
   const [sortDir, setSortDir] = useState("desc");
-
   const header = (label, key) => {
     const active = sortKey === key;
     const arrow = active ? (sortDir === "asc" ? "↑" : "↓") : "";
@@ -114,16 +109,25 @@ export default function Dashboard() {
     });
   };
 
-  // ===== состояние модалки редактирования =====
+  // модалка редактирования описания файла
   const [editOpen, setEditOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState(null); // файл
+  const [editTarget, setEditTarget] = useState(null);
   const [editText, setEditText] = useState("");
+
+  // модалка сброса пароля
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     dispatch(meThunk());
     loadFiles();
   }, [token]);
+
+  useEffect(() => {
+    setResetEmail(user?.email || "");
+  }, [user]);
 
   const loadFiles = async () => {
     const { data } = await api(token).get("/files/");
@@ -159,17 +163,18 @@ export default function Dashboard() {
     await loadFiles();
   };
 
-const link = async (id) => {
-  const { data } = await api(token).post(`/links/`, { file_id: id });
-  const url = data.url.startsWith("http")
-    ? data.url
-    : window.location.origin + data.url;
-
-  await navigator.clipboard?.writeText(url);
-  setToast("Ссылка скопирована в буфер обмена");
-  setTimeout(() => setToast(""), 1500);
-};
-
+  const link = async (id) => {
+    try {
+      const { data } = await api(token).post(`/links/`, { file_id: id });
+      const url = data.url?.startsWith("http") ? data.url : window.location.origin + data.url;
+      await navigator.clipboard?.writeText(url);
+      setToast("Ссылка скопирована в буфер обмена");
+    } catch {
+      setToast("Не удалось создать ссылку");
+    } finally {
+      setTimeout(() => setToast(""), 1500);
+    }
+  };
 
   const dl = async (id, name) => {
     try {
@@ -177,7 +182,7 @@ const link = async (id) => {
       const blob = new Blob([res.data]);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      const cd = res.headers?.["content-disposition"];
+      const cd = res.headers["content-disposition"];
       const suggested = cd && /filename="(.+?)"/.exec(cd)?.[1];
       a.href = url;
       a.download = suggested || name || "file";
@@ -185,7 +190,7 @@ const link = async (id) => {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-    } catch {
+    } catch (e) {
       setToast("Ошибка скачивания");
       setTimeout(() => setToast(""), 1600);
     }
@@ -208,13 +213,46 @@ const link = async (id) => {
     closeEdit();
   };
 
-  // закрытие по ESC
+  // Сброс пароля (по email)
+  const openReset = () => {
+    setResetEmail(user?.email || "");
+    setResetOpen(true);
+  };
+  const closeReset = () => {
+    if (resetLoading) return;
+    setResetOpen(false);
+  };
+  const submitReset = async (e) => {
+    e?.preventDefault?.();
+    if (!resetEmail) {
+      setToast("Укажите email");
+      setTimeout(() => setToast(""), 1500);
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await api(token).post("/auth/password/reset-request/", { email: resetEmail });
+      setToast("Если email зарегистрирован, письмо отправлено");
+      setResetOpen(false);
+    } catch (err) {
+      setToast("Не удалось отправить письмо");
+    } finally {
+      setResetLoading(false);
+      setTimeout(() => setToast(""), 1800);
+    }
+  };
+
+  // ESC закрывает модалки
   useEffect(() => {
-    if (!editOpen) return;
-    const onKey = (e) => e.key === "Escape" && closeEdit();
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (editOpen) closeEdit();
+        if (resetOpen) closeReset();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editOpen]);
+  }, [editOpen, resetOpen]);
 
   if (!token)
     return (
@@ -228,10 +266,13 @@ const link = async (id) => {
       <section className="card">
         <div
           className="card-body"
-          style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: 12 }}
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}
         >
-          <div>
-            Пользователь: <b>{user?.username}</b>
+          <div>Пользователь: <b>{user?.username}</b> {user?.email ? `(${user.email})` : ""}</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn" onClick={openReset} title="Отправить письмо со ссылкой на сброс пароля">
+              Сбросить пароль
+            </button>
           </div>
         </div>
       </section>
@@ -282,10 +323,10 @@ const link = async (id) => {
                     </td>
                     <td>{formatBytes(f.size)}</td>
                     <td>{formatDate(f.uploaded_at || f.created_at)}</td>
-                    <td style={{ maxWidth: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <td style={{ maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {f.description || "—"}
                     </td>
-                    <td style={{ display: "flex", gap: 8 }}>
+                    <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button className="btn" onClick={() => dl(f.id, f.original_name)}>Скачать</button>
                       <button className="btn" onClick={() => link(f.id)}>Ссылка</button>
                       <button className="btn" onClick={() => openEdit(f)} title="Редактировать описание">✎</button>
@@ -295,9 +336,7 @@ const link = async (id) => {
                 ))}
                 {getSorted(files).length === 0 && (
                   <tr>
-                    <td colSpan="5" style={{ color: "var(--muted)" }}>
-                      Пока нет файлов
-                    </td>
+                    <td colSpan="5" style={{ color: "var(--muted)" }}>Пока нет файлов</td>
                   </tr>
                 )}
               </tbody>
@@ -306,7 +345,7 @@ const link = async (id) => {
         </div>
       </section>
 
-      {/* модалка редактирования */}
+      {/* модалка: редактирование описания */}
       <Modal
         open={editOpen}
         title={editTarget ? `Описание: ${editTarget.original_name}` : "Описание файла"}
@@ -327,6 +366,31 @@ const link = async (id) => {
           <button className="btn" onClick={saveEdit}>Сохранить</button>
           <button className="btn" onClick={closeEdit}>Отмена</button>
         </div>
+      </Modal>
+
+      {/* модалка: сброс пароля */}
+      <Modal open={resetOpen} title="Сброс пароля" onClose={closeReset}>
+        <form onSubmit={submitReset} className="grid" style={{ gap: 12 }}>
+          <div className="field">
+            <label className="label">Email для получения ссылки</label>
+            <input
+              className="input"
+              type="email"
+              placeholder="you@example.com"
+              value={resetEmail}
+              onChange={(e) => setResetEmail(e.target.value)}
+            />
+            <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
+              На этот адрес придёт письмо со ссылкой для смены пароля.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button className="btn" type="submit" disabled={resetLoading}>
+              {resetLoading ? <span className="spinner" /> : "Отправить письмо"}
+            </button>
+            <button className="btn" type="button" onClick={closeReset} disabled={resetLoading}>Отмена</button>
+          </div>
+        </form>
       </Modal>
 
       {toast && <div className="toast">{toast}</div>}

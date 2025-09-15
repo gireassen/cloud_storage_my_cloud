@@ -58,6 +58,7 @@ export default function Admin() {
   const token = useSelector((s) => s.auth.token);
   const [users, setUsers] = useState([]);
   const [files, setFiles] = useState([]);
+  const [toast, setToast] = useState("");
 
   // сортировка
   const [sortKey, setSortKey] = useState("id");
@@ -158,6 +159,46 @@ export default function Admin() {
     await loadFiles();
   };
 
+  // ==== admin: временный пароль + сброс по email ====
+  const setTempPassword = async (userId) => {
+    if (!confirm("Выдать пользователю временный пароль?")) return;
+    try {
+      const { data } = await api(token).post(`/admin/users/${userId}/set_temp_password/`);
+      const pwd = data?.temporary_password;
+      if (pwd) {
+        await navigator.clipboard?.writeText(pwd);
+        setToast("Временный пароль скопирован в буфер");
+        setTimeout(() => setToast(""), 1600);
+        alert(`Временный пароль: ${pwd}\n(он уже в буфере обмена)`);
+      } else {
+        setToast("Пароль выдан");
+        setTimeout(() => setToast(""), 1600);
+      }
+    } catch (e) {
+      console.error(e);
+      setToast("Не удалось выдать временный пароль");
+      setTimeout(() => setToast(""), 1600);
+    }
+  };
+
+  const sendResetLink = async (userId) => {
+    try {
+      const { data } = await api(token).post(`/admin/users/${userId}/send_reset_link/`);
+      const link = data?.link;
+      if (link) {
+        await navigator.clipboard?.writeText(link);
+        setToast("Ссылка для сброса скопирована");
+      } else {
+        setToast("Если настроен email, письмо отправлено");
+      }
+      setTimeout(() => setToast(""), 1600);
+    } catch (e) {
+      console.error(e);
+      setToast("Не удалось отправить ссылку");
+      setTimeout(() => setToast(""), 1600);
+    }
+  };
+
   const openEdit = (f) => {
     setEditTarget(f);
     setEditText(f.description || "");
@@ -192,7 +233,12 @@ export default function Admin() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>ID</th><th>Логин</th><th>Email</th><th>Роль</th><th>Активен</th>
+                  <th>ID</th>
+                  <th>Логин</th>
+                  <th>Email</th>
+                  <th>Роль</th>
+                  <th>Активен</th>
+                  <th>Пароль</th>
                 </tr>
               </thead>
               <tbody>
@@ -201,12 +247,23 @@ export default function Admin() {
                     <td>{u.id}</td>
                     <td>{u.username}</td>
                     <td>{u.email}</td>
-                    <td>{u.role}</td>
+                    {/* у некоторых сериализаторов нет поля role — подстрахуемся */}
+                    <td>{u.role ?? (u.is_staff ? "admin" : "user")}</td>
                     <td>{u.is_active ? "Да" : "Нет"}</td>
+                    <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button className="btn" onClick={() => setTempPassword(u.id)} title="Выдать временный пароль">
+                        Временный пароль
+                      </button>
+                      <button className="btn" onClick={() => sendResetLink(u.id)} title="Отправить ссылку для сброса">
+                        Сброс по email
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {users.length === 0 && (
-                  <tr><td colSpan="5" style={{ color: "var(--muted)" }}>Нет данных</td></tr>
+                  <tr>
+                    <td colSpan="6" style={{ color: "var(--muted)" }}>Нет данных</td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -243,7 +300,7 @@ export default function Admin() {
                     <td style={{ maxWidth: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {f.description || "—"}
                     </td>
-                    <td style={{ display: "flex", gap: 8 }}>
+                    <td style={{ display: "flex", gap: 8, position: "relative", zIndex: 1 }}>
                       <button className="btn" onClick={() => dl(f.id, f.original_name)}>Скачать</button>
                       <button className="btn" onClick={() => openEdit(f)} title="Редактировать описание">✎</button>
                       <button className="btn danger" onClick={() => del(f.id)}>Удалить</button>
@@ -281,6 +338,8 @@ export default function Admin() {
           <button className="btn" onClick={closeEdit}>Отмена</button>
         </div>
       </Modal>
+
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }

@@ -16,6 +16,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from drf_spectacular.utils import extend_schema
 from django.db.models import Count, Sum
+import string, secrets
 
 User = get_user_model()
 
@@ -49,6 +50,38 @@ class UserViewSet(viewsets.ModelViewSet):
         user.is_staff = not user.is_staff
         user.save(update_fields=["is_staff"])
         return Response({"id": user.id, "is_staff": user.is_staff})
+    
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
+    def set_temp_password(self, request, pk=None):
+        user = self.get_object()
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
+        temp_pwd = "".join(secrets.choice(alphabet) for _ in range(12))
+        user.set_password(temp_pwd)
+        user.save(update_fields=["password"])
+        return Response({"temporary_password": temp_pwd})
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
+    def send_reset_link(self, request, pk=None):
+        user = self.get_object()
+        if not user.email:
+            return Response({"detail": "У пользователя не указан email."}, status=status.HTTP_400_BAD_REQUEST)
+
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        if getattr(settings, "FRONTEND_RESET_URL", ""):
+            link = f"{settings.FRONTEND_RESET_URL}?uid={uid}&token={token}"
+        else:
+            link = request.build_absolute_uri(f"/api/auth/password/reset-confirm/?uid={uid}&token={token}")
+
+        send_mail(
+            subject="Сброс пароля — MyCloud",
+            message=f"Для сброса пароля перейдите по ссылке: {link}",
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+        return Response({"detail": "Ссылка отправлена (если email настроен).", "link": link})
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
@@ -149,3 +182,19 @@ def password_reset_confirm(request):
     user.set_password(new_password)
     user.save()
     return Response({"detail": "Пароль обновлён"}, status=status.HTTP_200_OK)
+
+@api_view(["POST"])
+def change_password(request):
+    """Авторизованный пользователь меняет свой пароль, указав старый и новый."""
+    from .serializers import ChangePasswordSerializer
+    ser = ChangePasswordSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    user = request.user
+
+    if not user.check_password(ser.validated_data["old_password"]):
+        return Response({"detail": "Старый пароль неверен."}, status=status.HTTP_400_BAD_REQUEST)
+
+    new_pwd = ser.validated_data["new_password"]
+    user.set_password(new_pwd)
+    user.save(update_fields=["password"])
+    return Response({"detail": "Пароль изменён."})
