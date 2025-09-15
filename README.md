@@ -107,20 +107,9 @@ docker compose up --build
 ```bash
 podman compose up --build
 ```
+>! МИГРАЦИИ И СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ ПРОИСХОДИТ ПРИ БИЛДЕ (см. `.mycloud/backend/entrypoint.sh`)
 
-3. Примените миграции и создайте админа:
-
-```bash
-# Docker:
-docker compose exec backend python manage.py migrate
-docker compose exec backend python manage.py createsuperuser
-
-# Podman:
-podman compose exec backend python manage.py migrate
-podman compose exec backend python manage.py createsuperuser
-```
-
-4. Зайдите в приложение:
+3. Зайдите в приложение:
 
 * SPA: `http://localhost:8080/` (если фронтенд проксируется через nginx)
   или `http://localhost:8000/` (если фронтенд встроен и обслуживается Django).
@@ -369,3 +358,19 @@ docker|podman compose exec backend python manage.py migrate links 0002_initial -
 * токен не содержит имени пользователя или имени файла.
 * при скачивании по токену отдаются оригинальное имя и правильный Content-Type.
 
+---
+### Запуск тестов
+```
+# 1) Активируйте окружение
+source .venv/bin/activate
+
+# 2) Запустите миграции (для локальной БД, если используете)
+python manage.py migrate
+
+# 3) Запустите тесты
+pytest
+
+# Покрытие (опционально):
+pytest --cov=app --cov-report=term-missing
+
+```

@@ -7,3 +7,8 @@ cryptography>=42.0
 django-cors-headers>=4.3
 
 drf-spectacular>=0.27
+
+pytest
+pytest-django
+pytest-cov
+factory_boy

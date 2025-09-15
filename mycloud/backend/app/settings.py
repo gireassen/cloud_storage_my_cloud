@@ -2,14 +2,54 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 load_dotenv()
+
+def _split_csv_env(name: str):
+    raw = os.getenv(name, "")
+    items = [x.strip() for x in raw.replace(";", ",").split(",") if x.strip()]
+    return items
+
+def _validate_origins(name: str, values: list[str]) -> list[str]:
+    """
+    Пропускаем только origin-ы со схемой (http/https) и хостом.
+    Отбрасываем мусор. Если список пуст — вернём пустой, а ниже подставим дефолт.
+    """
+    out = []
+    for v in values:
+        p = urlparse(v)
+        if p.scheme in ("http", "https") and p.netloc:
+            out.append(f"{p.scheme}://{p.netloc}")
+    return out
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-please-change")
-DEBUG = os.getenv("DEBUG", "true").lower() == "true"
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "*").split(",")
+DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
+ALLOWED_HOSTS = _split_csv_env("ALLOWED_HOSTS") or ["localhost", "127.0.0.1"]
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:8080").strip()
+CORS_ALLOW_CREDENTIALS = True
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+_raw_cors = _split_csv_env("CORS_ALLOWED_ORIGINS")
+_raw_csrf = _split_csv_env("CSRF_TRUSTED_ORIGINS")
+if not _raw_cors:
+    _raw_cors = [FRONTEND_ORIGIN]
+if not _raw_csrf:
+    _raw_csrf = [FRONTEND_ORIGIN]
+CORS_ALLOWED_ORIGINS = _validate_origins("CORS_ALLOWED_ORIGINS", _raw_cors)
+CSRF_TRUSTED_ORIGINS = _validate_origins("CSRF_TRUSTED_ORIGINS", _raw_csrf)
+if not CORS_ALLOWED_ORIGINS:
+    raise RuntimeError("CORS_ALLOWED_ORIGINS пуст или содержит некорректные значения. "
+                       "пример: CORS_ALLOWED_ORIGINS=http://localhost:8080")
+if not CSRF_TRUSTED_ORIGINS:
+    raise RuntimeError("CSRF_TRUSTED_ORIGINS пуст или содержит некорректные значения. "
+                       "пример: CSRF_TRUSTED_ORIGINS=http://localhost:8080")
+CORS_ALLOW_CREDENTIALS = True
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE   = not DEBUG
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -94,8 +134,6 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS","").split(",") if not DEBUG else []
-CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS","").split(",") if not DEBUG else []
 
 LANGUAGE_CODE = "ru-ru"
 TIME_ZONE = "Europe/Moscow"
