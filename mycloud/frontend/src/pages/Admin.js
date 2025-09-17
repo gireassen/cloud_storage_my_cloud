@@ -181,23 +181,23 @@ export default function Admin() {
     }
   };
 
-  const sendResetLink = async (userId) => {
+  const [busyUserId, setBusyUserId] = useState(null);
+
+  const sendResetLink = async (userId, email) => {
+    if (!confirm(`Отправить ссылку для сброса пароля на ${email || "почту пользователя"}?`)) return;
     try {
-      const { data } = await api(token).post(`/admin/users/${userId}/send_reset_link/`);
-      const link = data?.link;
-      if (link) {
-        await navigator.clipboard?.writeText(link);
-        setToast("Ссылка для сброса скопирована");
-      } else {
-        setToast("Если настроен email, письмо отправлено");
-      }
-      setTimeout(() => setToast(""), 1600);
+      setBusyUserId(userId);
+      await api(token).post(`/admin/users/${userId}/send_reset_link/`);
+      setToast("Ссылка для сброса отправляется");
     } catch (e) {
       console.error(e);
       setToast("Не удалось отправить ссылку");
-      setTimeout(() => setToast(""), 1600);
+    } finally {
+      setTimeout(() => setToast(""), 2000);
+      setBusyUserId(null);
     }
   };
+
 
   const openEdit = (f) => {
     setEditTarget(f);
@@ -247,15 +247,16 @@ export default function Admin() {
                     <td>{u.id}</td>
                     <td>{u.username}</td>
                     <td>{u.email}</td>
-                    {/* у некоторых сериализаторов нет поля role — подстрахуемся */}
-                    <td>{u.role ?? (u.is_staff ? "admin" : "user")}</td>
+                    <td>{u.role}</td>
                     <td>{u.is_active ? "Да" : "Нет"}</td>
-                    <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button className="btn" onClick={() => setTempPassword(u.id)} title="Выдать временный пароль">
-                        Временный пароль
-                      </button>
-                      <button className="btn" onClick={() => sendResetLink(u.id)} title="Отправить ссылку для сброса">
-                        Сброс по email
+                    <td className="actions" style={{whiteSpace:"nowrap"}}>
+                      <button
+                        className="btn ghost"
+                        onClick={() => sendResetLink(u.id, u.email)}
+                        disabled={busyUserId === u.id}
+                        title="Отправить ссылку для сброса пароля"
+                      >
+                        {busyUserId === u.id ? "Отправка..." : "Сброс пароля"}
                       </button>
                     </td>
                   </tr>

@@ -184,12 +184,23 @@ LOGGING = {
 }
 
 
-# Email (SMTP) settings
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
-EMAIL_HOST = os.getenv("EMAIL_HOST", "")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "0") or 0)
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "false").lower() == "true"
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.example.com")
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@mycloud.local")
-FRONTEND_RESET_URL = os.getenv("FRONTEND_RESET_URL", "")  # если хотим слать ссылку на фронт
+
+USE_TLS = os.getenv("EMAIL_USE_TLS", "false").lower() in ("1", "true", "yes")
+USE_SSL = os.getenv("EMAIL_USE_SSL", "false").lower() in ("1", "true", "yes")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "0") or 0)
+
+if USE_TLS and USE_SSL:
+    raise ValueError("EMAIL_USE_TLS и EMAIL_USE_SSL взаимоисключительны — оставьте только один.")
+if EMAIL_PORT in (465,) and USE_TLS:
+    raise ValueError("Порт 465 используется с EMAIL_USE_SSL=True (а не TLS).")
+if EMAIL_PORT in (587,) and USE_SSL:
+    raise ValueError("Порт 587 используется с EMAIL_USE_TLS=True (а не SSL).")
+
+EMAIL_USE_TLS = USE_TLS
+EMAIL_USE_SSL = USE_SSL
