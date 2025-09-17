@@ -22,11 +22,23 @@ else:
     raise SystemExit("DB not available")
 PY
 
-python manage.py makemigrations --noinput
+python manage.py makemigrations --noinput || true
 python manage.py migrate --noinput
 
+python manage.py collectstatic --noinput
+
 if [ "$DJANGO_SUPERUSER_USERNAME" ] && [ "$DJANGO_SUPERUSER_PASSWORD" ]; then
-  python manage.py createsuperuser --noinput --username "$DJANGO_SUPERUSER_USERNAME" --email "${DJANGO_SUPERUSER_EMAIL:-admin@example.com}" || true
+  python manage.py createsuperuser --noinput \
+    --username "$DJANGO_SUPERUSER_USERNAME" \
+    --email "${DJANGO_SUPERUSER_EMAIL:-admin@example.com}" || true
 fi
 
-python manage.py runserver 0.0.0.0:8000
+exec gunicorn app.wsgi:application \
+  --bind 0.0.0.0:8000 \
+  --workers "${GUNICORN_WORKERS:-1}" \
+  --threads "${GUNICORN_THREADS:-1}" \
+  --timeout "${GUNICORN_TIMEOUT:-60}" \
+  --access-logfile - \
+  --error-logfile - \
+  --log-level "${GUNICORN_LOG_LEVEL:-info}" \
+  --preload
