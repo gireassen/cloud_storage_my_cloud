@@ -7,7 +7,7 @@ import re
 
 User = get_user_model()
 
-USERNAME_RE = re.compile(r'^[A-Za-z][A-Za-z0-9]{3,19}$')
+USERNAME_RE = re.compile(r'^[A-Za-z][A-Za-z0-9_]{3,19}$')
 
 class UserSerializer(serializers.ModelSerializer):
     files_count = serializers.SerializerMethodField(read_only=True)

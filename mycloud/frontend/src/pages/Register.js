@@ -1,43 +1,77 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 
+const PWD_RE = {
+  upper: /[A-Z]/,
+  digit: /\d/,
+  special: /[^\w\s]/,
+};
+function checkPasswordPolicy(pwd) {
+  const okLen = (pwd || "").length >= 6;
+  const okUp = PWD_RE.upper.test(pwd || "");
+  const okDi = PWD_RE.digit.test(pwd || "");
+  const okSp = PWD_RE.special.test(pwd || "");
+  return { okLen, okUp, okDi, okSp, ok: okLen && okUp && okDi && okSp };
+}
+
+function humanizeErrors(data) {
+  if (!data) return "Ошибка регистрации";
+  if (typeof data === "string") return data;
+  if (data.detail) return data.detail;
+
+  const parts = [];
+  for (const [k, v] of Object.entries(data)) {
+    const text = Array.isArray(v) ? v.join(" ") : String(v);
+    const label =
+      k === "username"
+        ? "Логин"
+        : k === "email"
+        ? "Email"
+        : k === "password"
+        ? "Пароль"
+        : k;
+    parts.push(`${label}: ${text}`);
+  }
+  return parts.join("\n") || "Ошибка регистрации";
+}
+
 export default function Register() {
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
-  function humanizeErrors(data) {
-    if (!data) return "Ошибка регистрации";
-    if (typeof data === "string") return data;
-    if (data.detail) return data.detail;
-    if (Array.isArray(data)) return data.join("\n");
-    const parts = [];
-    for (const [k, v] of Object.entries(data)) {
-      let text = Array.isArray(v) ? v.join(" ") : String(v);
-      parts.push(`${k}: ${text}`);
-    }
-    return parts.join("\n") || "Ошибка регистрации";
-  }
+  const pw = useMemo(() => checkPasswordPolicy(password), [password]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setMsg("");
+    if (!pw.ok) {
+      setMsg(
+        [
+          !pw.okLen && "Пароль должен быть не короче 6 символов.",
+          !pw.okUp && "Нужна хотя бы одна ЗАГЛАВНАЯ буква.",
+          !pw.okDi && "Нужна хотя бы одна цифра.",
+          !pw.okSp && "Нужен хотя бы один спецсимвол.",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      );
+      return;
+    }
+
+    setLoading(true);
     try {
-      await axios.post("/api/auth/register/", {
-        username,
-        email,
-        password,
-        password2: password,
-      });
+      await axios.post("/api/auth/register/", { username, email, password });
+
       setMsg("Регистрация успешна, переходим ко входу…");
       setTimeout(() => navigate("/login"), 700);
     } catch (e) {
-      setMsg(humanizeErrors(e?.response?.data) || "Ошибка регистрации");
+      setMsg(humanizeErrors(e?.response?.data));
     } finally {
       setLoading(false);
     }
@@ -79,12 +113,26 @@ export default function Register() {
             className="input"
             type="password"
             autoComplete="new-password"
-            placeholder="минимум 8 символов"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="минимум 6 символов, Aa1!"
             required
-            minLength={8}
+            minLength={6}
           />
+          <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.4 }}>
+            <li style={{ color: pw.okLen ? "var(--ok, #46d369)" : "var(--warn, #ff6b6b)" }}>
+              ≥ 6 символов
+            </li>
+            <li style={{ color: pw.okUp ? "var(--ok, #46d369)" : "var(--warn, #ff6b6b)" }}>
+              ≥ 1 заглавная буква (A…Z)
+            </li>
+            <li style={{ color: pw.okDi ? "var(--ok, #46d369)" : "var(--warn, #ff6b6b)" }}>
+              ≥ 1 цифра (0…9)
+            </li>
+            <li style={{ color: pw.okSp ? "var(--ok, #46d369)" : "var(--warn, #ff6b6b)" }}>
+              ≥ 1 спецсимвол (например, !@#$%)
+            </li>
+          </ul>
         </div>
 
         <button className="btn" type="submit" disabled={loading}>
