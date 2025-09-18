@@ -211,3 +211,5 @@ __marimo__/
 pgdata/
 media/
 static/
+*.zip
+*.tar
