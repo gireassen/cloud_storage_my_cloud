@@ -27,11 +27,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-please-change")
 DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
+def _env_bool(name, default):
+    return os.getenv(name, str(default)).lower() in ("1", "true", "yes")
+SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", not DEBUG)
+CSRF_COOKIE_SECURE    = _env_bool("CSRF_COOKIE_SECURE",    not DEBUG)
+
 ALLOWED_HOSTS = _split_csv_env("ALLOWED_HOSTS") or ["localhost", "127.0.0.1"]
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:8080").strip()
 CORS_ALLOW_CREDENTIALS = True
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
 _raw_cors = _split_csv_env("CORS_ALLOWED_ORIGINS")
 _raw_csrf = _split_csv_env("CSRF_TRUSTED_ORIGINS")
 if not _raw_cors:
@@ -47,8 +50,7 @@ if not CSRF_TRUSTED_ORIGINS:
     raise RuntimeError("CSRF_TRUSTED_ORIGINS пуст или содержит некорректные значения. "
                        "пример: CSRF_TRUSTED_ORIGINS=http://localhost:8080")
 CORS_ALLOW_CREDENTIALS = True
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE   = not DEBUG
+
 
 
 INSTALLED_APPS = [

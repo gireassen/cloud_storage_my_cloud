@@ -30,8 +30,10 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - backend_storage:/code/storage
-      - backend_logs:/code/logs
+      - ./backend_storage:/code/storage
+      - ./backend_logs:/code/logs
+      - ./static:/code/static
+      - ./media:/code/media
     ports:
       - "8000:8000"
     networks:

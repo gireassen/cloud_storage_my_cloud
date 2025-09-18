@@ -3,7 +3,7 @@ from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('dj-admin/', admin.site.urls),
     path('api/', include('app.users.urls')),
     path('api/', include('app.files.urls')),
     path('api/', include('app.links.urls')),
