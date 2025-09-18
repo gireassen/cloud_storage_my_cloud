@@ -1,5 +1,8 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from django.contrib.auth.password_validation import validate_password as dj_validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.conf import settings
 import re
 
 User = get_user_model()
@@ -34,11 +37,12 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, trim_whitespace=False)
+    password2 = serializers.CharField(write_only=True, required=False, allow_blank=True)
     full_name = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ("username", "email", "password", "full_name")
+        fields = ("username", "email", "password", "password2", "full_name")
 
     def validate_username(self, v: str):
         v = (v or "").strip()
@@ -56,19 +60,23 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Пользователь с таким email уже существует.")
         return email
 
-    def _validate_password_policy(self, pwd: str):
-        if len(pwd) < 6:
-            raise serializers.ValidationError("Пароль должен быть не короче 6 символов.")
-        if not re.search(r"[A-Z]", pwd):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 заглавную букву.")
-        if not re.search(r"\d", pwd):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 цифру.")
-        if not re.search(r"[^\w\s]", pwd):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 спецсимвол.")
+    def validate(self, attrs):
+        pwd = attrs.get("password") or ""
+        pwd2 = self.initial_data.get("password2")
 
-    def validate_password(self, v: str):
-        self._validate_password_policy(v or "")
-        return v
+        if pwd2 not in (None, "") and pwd != pwd2:
+            raise serializers.ValidationError({"password2": ["Пароли не совпадают."]})
+
+        tmp_user = User(username=attrs.get("username"), email=attrs.get("email"))
+        try:
+            dj_validate_password(pwd, user=tmp_user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({"password": list(e.messages)})
+
+        if not getattr(settings, "AUTH_PASSWORD_VALIDATORS", None) and len(pwd) < 8:
+            raise serializers.ValidationError({"password": ["Пароль должен быть не короче 8 символов."]})
+
+        return attrs
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -90,14 +98,14 @@ class ChangePasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     def validate_new_password(self, v: str):
-        if len(v) < 6:
-            raise serializers.ValidationError("Пароль должен быть не короче 6 символов.")
-        if not re.search(r"[A-Z]", v):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 заглавную букву.")
-        if not re.search(r"\d", v):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 цифру.")
-        if not re.search(r"[^\w\s]", v):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 спецсимвол.")
+        tmp_user = getattr(self.context, "user", None)
+        try:
+            dj_validate_password(v, user=tmp_user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(list(e.messages))
+
+        if not getattr(settings, "AUTH_PASSWORD_VALIDATORS", None) and len(v or "") < 8:
+            raise serializers.ValidationError("Пароль должен быть не короче 8 символов.")
         return v
 
 
@@ -111,12 +119,10 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     def validate_new_password(self, v: str):
-        if len(v) < 6:
-            raise serializers.ValidationError("Пароль должен быть не короче 6 символов.")
-        if not re.search(r"[A-Z]", v):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 заглавную букву.")
-        if not re.search(r"\d", v):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 цифру.")
-        if not re.search(r"[^\w\s]", v):
-            raise serializers.ValidationError("Пароль должен содержать ≥ 1 спецсимвол.")
+        try:
+            dj_validate_password(v)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(list(e.messages))
+        if not getattr(settings, "AUTH_PASSWORD_VALIDATORS", None) and len(v or "") < 8:
+            raise serializers.ValidationError("Пароль должен быть не короче 8 символов.")
         return v

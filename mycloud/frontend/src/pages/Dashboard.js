@@ -3,7 +3,6 @@ import { useSelector, useDispatch } from "react-redux";
 import { meThunk } from "../store";
 import { api } from "../api";
 
-// ===== helpers =====
 function formatBytes(bytes) {
   if (bytes === 0 || bytes === undefined || bytes === null) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -12,41 +11,83 @@ function formatBytes(bytes) {
   const num = val >= 10 ? Math.round(val) : Math.round(val * 10) / 10;
   return `${num} ${units[i]}`;
 }
+
 function formatDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString();
 }
+
 function toList(data) {
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.results)) return data.results;
   return [];
 }
+async function copyToClipboard(text) {
+  if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {}
+  }
 
-// ===== простая модалка =====
+  // Фолбек: скрытая textarea + execCommand('copy')
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "absolute";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+
+  const selection = document.getSelection();
+  const prevRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  } finally {
+    document.body.removeChild(ta);
+    if (prevRange && selection) {
+      selection.removeAllRanges();
+      selection.addRange(prevRange);
+    }
+  }
+  return ok;
+}
+
 function Modal({ open, title, children, onClose }) {
   if (!open) return null;
   return (
     <div
-      role="dialog"
-      aria-modal="true"
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.55)",
+        background: "rgba(0,0,0,.4)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         zIndex: 1000,
-        padding: 16,
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
       }}
     >
-      <div className="card" style={{ width: "min(720px, 96vw)", maxHeight: "90vh", overflow: "auto" }}>
-        {title && <div className="card-header">{title}</div>}
-        <div className="card-body">{children}</div>
+      <div
+        className="modal"
+        style={{
+          background: "var(--panel)",
+          borderRadius: 10,
+          width: "min(720px, 92vw)",
+          padding: 16,
+          boxShadow: "0 10px 30px rgba(0,0,0,.35)",
+        }}
+      >
+        {title && <h3 style={{ margin: "6px 0 14px 0" }}>{title}</h3>}
+        {children}
       </div>
     </div>
   );
@@ -66,15 +107,20 @@ export default function Dashboard() {
   // сортировка
   const [sortKey, setSortKey] = useState("uploaded_at");
   const [sortDir, setSortDir] = useState("desc");
+
   const header = (label, key) => {
     const active = sortKey === key;
     const arrow = active ? (sortDir === "asc" ? "↑" : "↓") : "";
     return (
-      <th onClick={() => sortBy(key)} style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
+      <th
+        onClick={() => sortBy(key)}
+        style={{ cursor: "pointer", whiteSpace: "nowrap" }}
+      >
         {label} {arrow}
       </th>
     );
   };
+
   const sortBy = (key) => {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
@@ -82,6 +128,7 @@ export default function Dashboard() {
       setSortDir("asc");
     }
   };
+
   const keyExtract = (row, key) => {
     switch (key) {
       case "original_name":
@@ -97,6 +144,7 @@ export default function Dashboard() {
         return row[key];
     }
   };
+
   const getSorted = (arr) => {
     const data = Array.isArray(arr) ? [...arr] : toList(arr);
     return data.sort((a, b) => {
@@ -142,9 +190,11 @@ export default function Dashboard() {
       const form = new FormData();
       form.append("file", file);
       if (desc) form.append("description", desc);
+
       await api(token).post("/files/", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+
       setFile(null);
       setDesc("");
       await loadFiles();
@@ -162,13 +212,23 @@ export default function Dashboard() {
     await api(token).delete(`/files/${id}/`);
     await loadFiles();
   };
-
   const link = async (id) => {
     try {
       const { data } = await api(token).post(`/links/`, { file_id: id });
-      const url = data.url?.startsWith("http") ? data.url : window.location.origin + data.url;
-      await navigator.clipboard?.writeText(url);
-      setToast("Ссылка скопирована в буфер обмена");
+
+      const fullUrl =
+        typeof data?.url === "string"
+          ? new URL(data.url, window.location.origin).toString()
+          : window.location.origin;
+
+      const ok = await copyToClipboard(fullUrl);
+
+      if (ok) {
+        setToast("Ссылка скопирована в буфер обмена");
+      } else {
+        window.prompt("Скопируйте ссылку вручную:", fullUrl);
+        setToast("Ссылка готова");
+      }
     } catch {
       setToast("Не удалось создать ссылку");
     } finally {
@@ -209,7 +269,9 @@ export default function Dashboard() {
   const saveEdit = async () => {
     if (!editTarget) return;
     await api(token).patch(`/files/${editTarget.id}/`, { description: editText });
-    setFiles((prev) => prev.map((x) => (x.id === editTarget.id ? { ...x, description: editText } : x)));
+    setFiles((prev) =>
+      prev.map((x) => (x.id === editTarget.id ? { ...x, description: editText } : x))
+    );
     closeEdit();
   };
 
@@ -256,106 +318,109 @@ export default function Dashboard() {
 
   if (!token)
     return (
-      <div className="card">
-        <div className="card-body">Требуется вход</div>
+      <div className="container">
+        <h2>Требуется вход</h2>
       </div>
     );
 
   return (
-    <div className="grid">
-      <section className="card">
-        <div
-          className="card-body"
-          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}
-        >
-          <div>Пользователь: <b>{user?.username}</b> {user?.email ? `(${user.email})` : ""}</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn" onClick={openReset} title="Отправить письмо со ссылкой на сброс пароля">
-              Сбросить пароль
+    <div className="container" style={{ paddingBottom: 60 }}>
+      <div className="panel" style={{ display: "flex", justifyContent: "space-between" }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Личный кабинет</h1>
+          <div style={{ marginTop: 10 }}>
+            Пользователь: <b>{user?.username}</b>{" "}
+            {user?.email ? `(${user.email})` : ""}
+          </div>
+        </div>
+        <div>
+          <button className="btn" onClick={openReset}>
+            Сбросить пароль
+          </button>
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 18 }}>
+        <h3 style={{ marginTop: 0 }}>Загрузка файла</h3>
+        <form onSubmit={upload} className="grid" style={{ gap: 12 }}>
+          <div className="field">
+            <input
+              type="file"
+              onChange={(e) => setFile(e.target.files[0])}
+            />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <input
+              className="input"
+              placeholder="Описание (необязательно)"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+            />
+          </div>
+          <div>
+            <button className="btn" type="submit" disabled={loading}>
+              {loading ? <span className="spinner" /> : "Загрузить"}
             </button>
           </div>
-        </div>
-      </section>
+        </form>
+      </div>
 
-      <section className="card">
-        <div className="card-header">Загрузка файла</div>
-        <div className="card-body">
-          <form onSubmit={upload} className="grid cols-2">
-            <div className="field">
-              <input className="file" type="file" onChange={(e) => setFile(e.target.files[0])} />
-            </div>
-            <div className="field">
-              <input
-                className="input"
-                placeholder="Описание (необязательно)"
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-              />
-            </div>
-            <div style={{ gridColumn: "1/-1" }}>
-              <button className="btn" type="submit" disabled={loading || !file}>
-                {loading ? <span className="spinner" /> : "Загрузить"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-header">Мои файлы</div>
-        <div className="card-body">
-          <div style={{ overflowX: "auto" }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  {header("Имя", "original_name")}
-                  {header("Размер", "size")}
-                  {header("Дата", "uploaded_at")}
-                  {header("Описание", "description")}
-                  <th>Действия</th>
+      <div className="panel" style={{ marginTop: 18 }}>
+        <h3 style={{ marginTop: 0 }}>Мои файлы</h3>
+        <div className="table">
+          <table>
+            <thead>
+              <tr>
+                {header("Имя", "original_name")}
+                {header("Размер", "size")}
+                {header("Дата", "uploaded_at")}
+                {header("Описание", "description")}
+                <th style={{ whiteSpace: "nowrap" }}>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {getSorted(files).map((f) => (
+                <tr key={f.id}>
+                  <td style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {f.original_name}
+                  </td>
+                  <td>{formatBytes(f.size)}</td>
+                  <td>{formatDate(f.uploaded_at || f.created_at)}</td>
+                  <td>{f.description || "—"}</td>
+                  <td style={{ display: "flex", gap: 8 }}>
+                    <button className="btn" onClick={() => dl(f.id, f.original_name)}>
+                      Скачать
+                    </button>
+                    <button className="btn" onClick={() => link(f.id)}>
+                      Ссылка
+                    </button>
+                    <button className="btn" onClick={() => openEdit(f)} title="Редактировать описание">
+                      ✎
+                    </button>
+                    <button className="btn danger" onClick={() => del(f.id)}>
+                      Удалить
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {getSorted(files).map((f) => (
-                  <tr key={f.id}>
-                    <td style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {f.original_name}
-                    </td>
-                    <td>{formatBytes(f.size)}</td>
-                    <td>{formatDate(f.uploaded_at || f.created_at)}</td>
-                    <td style={{ maxWidth: 500, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {f.description || "—"}
-                    </td>
-                    <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button className="btn" onClick={() => dl(f.id, f.original_name)}>Скачать</button>
-                      <button className="btn" onClick={() => link(f.id)}>Ссылка</button>
-                      <button className="btn" onClick={() => openEdit(f)} title="Редактировать описание">✎</button>
-                      <button className="btn danger" onClick={() => del(f.id)}>Удалить</button>
-                    </td>
-                  </tr>
-                ))}
-                {getSorted(files).length === 0 && (
-                  <tr>
-                    <td colSpan="5" style={{ color: "var(--muted)" }}>Пока нет файлов</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {getSorted(files).length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: "center", padding: 18, color: "var(--muted)" }}>
+                    Пока нет файлов
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      </section>
+      </div>
 
       {/* модалка: редактирование описания */}
-      <Modal
-        open={editOpen}
-        title={editTarget ? `Описание: ${editTarget.original_name}` : "Описание файла"}
-        onClose={closeEdit}
-      >
-        <div className="field" style={{ marginBottom: 12 }}>
+      <Modal open={editOpen} title="Редактирование файла" onClose={closeEdit}>
+        <div className="field">
           <label className="label">Описание</label>
           <textarea
             className="input"
-            rows={6}
             value={editText}
             onChange={(e) => setEditText(e.target.value)}
             placeholder="Введите описание файла"
@@ -388,7 +453,9 @@ export default function Dashboard() {
             <button className="btn" type="submit" disabled={resetLoading}>
               {resetLoading ? <span className="spinner" /> : "Отправить письмо"}
             </button>
-            <button className="btn" type="button" onClick={closeReset} disabled={resetLoading}>Отмена</button>
+            <button className="btn" type="button" onClick={closeReset} disabled={resetLoading}>
+              Отмена
+            </button>
           </div>
         </form>
       </Modal>
