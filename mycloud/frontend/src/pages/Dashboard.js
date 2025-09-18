@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { meThunk } from "../store";
 import { api } from "../api";
@@ -24,14 +24,12 @@ function toList(data) {
   return [];
 }
 async function copyToClipboard(text) {
-  if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {}
   }
-
-  // Фолбек: скрытая textarea + execCommand('copy')
   const ta = document.createElement("textarea");
   ta.value = text;
   ta.setAttribute("readonly", "");
@@ -112,10 +110,7 @@ export default function Dashboard() {
     const active = sortKey === key;
     const arrow = active ? (sortDir === "asc" ? "↑" : "↓") : "";
     return (
-      <th
-        onClick={() => sortBy(key)}
-        style={{ cursor: "pointer", whiteSpace: "nowrap" }}
-      >
+      <th onClick={() => sortBy(key)} style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
         {label} {arrow}
       </th>
     );
@@ -212,20 +207,19 @@ export default function Dashboard() {
     await api(token).delete(`/files/${id}/`);
     await loadFiles();
   };
-  const link = async (id) => {
+
+  /** Создание публичной ссылки + копирование с фолбеком */
+  const createShareLink = async (id) => {
     try {
       const { data } = await api(token).post(`/links/`, { file_id: id });
-
       const fullUrl =
         typeof data?.url === "string"
           ? new URL(data.url, window.location.origin).toString()
           : window.location.origin;
 
       const ok = await copyToClipboard(fullUrl);
-
-      if (ok) {
-        setToast("Ссылка скопирована в буфер обмена");
-      } else {
+      if (ok) setToast("Ссылка скопирована в буфер обмена");
+      else {
         window.prompt("Скопируйте ссылку вручную:", fullUrl);
         setToast("Ссылка готова");
       }
@@ -250,7 +244,7 @@ export default function Dashboard() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-    } catch (e) {
+    } catch {
       setToast("Ошибка скачивания");
       setTimeout(() => setToast(""), 1600);
     }
@@ -296,7 +290,7 @@ export default function Dashboard() {
       await api(token).post("/auth/password/reset-request/", { email: resetEmail });
       setToast("Если email зарегистрирован, письмо отправлено");
       setResetOpen(false);
-    } catch (err) {
+    } catch {
       setToast("Не удалось отправить письмо");
     } finally {
       setResetLoading(false);
@@ -344,10 +338,7 @@ export default function Dashboard() {
         <h3 style={{ marginTop: 0 }}>Загрузка файла</h3>
         <form onSubmit={upload} className="grid" style={{ gap: 12 }}>
           <div className="field">
-            <input
-              type="file"
-              onChange={(e) => setFile(e.target.files[0])}
-            />
+            <input type="file" onChange={(e) => setFile(e.target.files[0])} />
           </div>
           <div className="field" style={{ flex: 1 }}>
             <input
@@ -367,8 +358,15 @@ export default function Dashboard() {
 
       <div className="panel" style={{ marginTop: 18 }}>
         <h3 style={{ marginTop: 0 }}>Мои файлы</h3>
-        <div className="table">
-          <table>
+        <div className="table" style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", tableLayout: "fixed", minWidth: 780 }}>
+            <colgroup>
+              <col style={{ width: "40%" }} />  {/* Имя */}
+              <col style={{ width: "12%" }} />  {/* Размер */}
+              <col style={{ width: "20%" }} />  {/* Дата */}
+              <col style={{ width: "18%" }} />  {/* Описание */}
+              <col style={{ width: "10%", minWidth: 240 }} /> {/* Действия (тянется) */}
+            </colgroup>
             <thead>
               <tr>
                 {header("Имя", "original_name")}
@@ -381,25 +379,21 @@ export default function Dashboard() {
             <tbody>
               {getSorted(files).map((f) => (
                 <tr key={f.id}>
-                  <td style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <td style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {f.original_name}
                   </td>
                   <td>{formatBytes(f.size)}</td>
                   <td>{formatDate(f.uploaded_at || f.created_at)}</td>
-                  <td>{f.description || "—"}</td>
-                  <td style={{ display: "flex", gap: 8 }}>
-                    <button className="btn" onClick={() => dl(f.id, f.original_name)}>
-                      Скачать
-                    </button>
-                    <button className="btn" onClick={() => link(f.id)}>
-                      Ссылка
-                    </button>
-                    <button className="btn" onClick={() => openEdit(f)} title="Редактировать описание">
-                      ✎
-                    </button>
-                    <button className="btn danger" onClick={() => del(f.id)}>
-                      Удалить
-                    </button>
+                  <td style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.description || "—"}
+                  </td>
+                  <td style={{ minWidth: 260 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", justifyContent: "flex-start" }}>
+                      <button className="btn" onClick={() => dl(f.id, f.original_name)}>Скачать</button>
+                      <button className="btn" onClick={() => createShareLink(f.id)}>Ссылка</button>
+                      <button className="btn" onClick={() => openEdit(f)} title="Редактировать описание">✎</button>
+                      <button className="btn danger" onClick={() => del(f.id)}>Удалить</button>
+                    </div>
                   </td>
                 </tr>
               ))}
