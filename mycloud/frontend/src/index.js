@@ -1,4 +1,3 @@
-
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { Provider } from "react-redux";
@@ -9,6 +8,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
+import AdminUserFiles from "./pages/AdminUserFiles"; 
 import Layout from "./components/Layout";
 import "./styles.css";
 
@@ -21,6 +21,7 @@ function App() {
         <Route path="/register" element={<Layout title="Регистрация"><Register/></Layout>} />
         <Route path="/dashboard" element={<Layout title="Личный кабинет"><Dashboard/></Layout>} />
         <Route path="/admin" element={<Layout title="Админ-панель"><Admin/></Layout>} />
+        <Route path="/admin/users/:id" element={<Layout title="Хранилище пользователя"><AdminUserFiles/></Layout>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>

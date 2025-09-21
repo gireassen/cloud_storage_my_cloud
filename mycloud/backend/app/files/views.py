@@ -1,5 +1,5 @@
 import mimetypes
-from django.http import StreamingHttpResponse, FileResponse
+from django.http import StreamingHttpResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,7 +13,7 @@ from app.core.storage import EncryptedFileSystemStorage
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
 
-CHUNK = 64 * 1024  # 64 KB
+CHUNK = 64 * 1024
 
 def _iter_file(fobj, chunk_size=CHUNK):
     try:
@@ -62,7 +62,6 @@ class FileViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="download")
     def download(self, request, pk=None):
         file_obj = self.get_object()
-
         name = file_obj.file.name
         if not efs.exists(name):
             return Response({"detail": "Файл не найден на диске"}, status=status.HTTP_404_NOT_FOUND)
@@ -80,6 +79,7 @@ class FileViewSet(viewsets.ModelViewSet):
         )
         return resp
 
+
 class AdminFileViewSet(viewsets.ModelViewSet):
     queryset = File.objects.select_related("user").all()
     serializer_class = FileAdminSerializer
@@ -87,7 +87,7 @@ class AdminFileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        user_id = self.request.query_params.get("user_id")
+        user_id = self.request.query_params.get("user") or self.request.query_params.get("user_id")
         if user_id:
             qs = qs.filter(user_id=user_id)
         return qs
@@ -98,7 +98,6 @@ class AdminFileViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="download")
     def admin_download(self, request, pk=None):
         file_obj = self.get_object()
-
         name = file_obj.file.name
         if not efs.exists(name):
             return Response({"detail": "Файл не найден на диске"}, status=status.HTTP_404_NOT_FOUND)

@@ -206,3 +206,7 @@ if EMAIL_PORT in (587,) and USE_SSL:
 
 EMAIL_USE_TLS = USE_TLS
 EMAIL_USE_SSL = USE_SSL
+
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "app.users.validators.PasswordPolicyValidator"},
+]

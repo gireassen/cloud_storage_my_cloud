@@ -1,24 +1,18 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
-from rest_framework_simplejwt.serializers import (
-    TokenObtainPairSerializer,
-    TokenRefreshSerializer,
-)
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-
 from .views import (
     RegisterView,
-    UserViewSet,
     session_login,
     session_logout,
     MeView,
     password_reset_request,
     password_reset_confirm,
     change_password,
+    AdminUserViewSet,
 )
-
 
 @extend_schema_view(
     post=extend_schema(
@@ -28,7 +22,7 @@ from .views import (
     )
 )
 class JWTObtainPairView(TokenObtainPairView):
-    """Наследник только для описания схемы."""
+    pass
 
 @extend_schema_view(
     post=extend_schema(
@@ -38,10 +32,10 @@ class JWTObtainPairView(TokenObtainPairView):
     )
 )
 class JWTRefreshView(TokenRefreshView):
-    """Наследник только для описания схемы."""
+    pass
 
 router = DefaultRouter()
-router.register(r"admin/users", UserViewSet, basename="admin-users")
+router.register(r"admin/users", AdminUserViewSet, basename="admin-users")
 
 urlpatterns = [
     path("auth/password/reset-request/", password_reset_request, name="password-reset-request"),
@@ -52,6 +46,6 @@ urlpatterns = [
     path("auth/me/", MeView.as_view(), name="me"),
     path("token/", JWTObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", JWTRefreshView.as_view(), name="token_refresh"),
-    path('auth/password/change/', change_password),
-    path('', include(router.urls)),
+    path("auth/password/change/", change_password),
+    path("", include(router.urls)),
 ]

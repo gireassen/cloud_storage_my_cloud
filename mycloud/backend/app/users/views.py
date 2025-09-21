@@ -14,55 +14,47 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
 from django.core.mail import send_mail
 from django.conf import settings
-from drf_spectacular.utils import extend_schema
 from django.db.models import Count, Sum
-import string, secrets
+import string
+import secrets
 import threading
 import logging
-from django.core.mail import send_mail
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
-from django.conf import settings
-from rest_framework.decorators import action
-from rest_framework import status
-from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-class RegisterView(generics.CreateAPIView):
-    queryset = User.objects.all()
-    serializer_class = RegisterSerializer
-    permission_classes = [permissions.AllowAny]
 
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all().order_by("-date_joined")
-    serializer_class = UserSerializer
+class AdminUserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAdminUser]
+    serializer_class = UserSerializer
+    queryset = (
+        User.objects.all()
+        .annotate(files_count=Count("files", distinct=True), files_total_size=Sum("files__size"))
+        .order_by("-id")
+    )
+    http_method_names = ["get", "delete", "patch", "post"]
 
-    def get_queryset(self):
-        return (
-            User.objects
-            .annotate(files_count=Count("files"), files_total_size=Sum("files__size"))
-            .order_by("-date_joined")
-        )
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        is_staff = request.data.get("is_staff", None)
+        if is_staff is not None:
+            if instance == request.user:
+                return Response({"detail": "Нельзя менять свою роль."}, status=400)
+            instance.is_staff = bool(is_staff)
+            instance.save(update_fields=["is_staff"])
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
-    def deactivate(self, request, pk=None):
+    @action(detail=True, methods=["post"])
+    def toggle_staff(self, request, pk=None):
         user = self.get_object()
-        user.is_active = False
-        user.save(update_fields=["is_active"])
-        return Response({"status": "deactivated"})
-
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
-    def toggle_admin(self, request, pk=None):
-        user = self.get_object()
+        if user == request.user:
+            return Response({"detail": "Нельзя менять свою роль."}, status=400)
         user.is_staff = not user.is_staff
         user.save(update_fields=["is_staff"])
-        return Response({"id": user.id, "is_staff": user.is_staff})
-    
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
+        return Response(self.get_serializer(user).data)
+
+    @action(detail=True, methods=["post"])
     def set_temp_password(self, request, pk=None):
         user = self.get_object()
         alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
@@ -71,12 +63,11 @@ class UserViewSet(viewsets.ModelViewSet):
         user.save(update_fields=["password"])
         return Response({"temporary_password": temp_pwd})
 
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
+    @action(detail=True, methods=["post"])
     def send_reset_link(self, request, pk=None):
         user = self.get_object()
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
-
         if getattr(settings, "FRONTEND_RESET_URL", ""):
             link = f"{settings.FRONTEND_RESET_URL}?uid={uid}&token={token}"
         else:
@@ -96,6 +87,13 @@ class UserViewSet(viewsets.ModelViewSet):
 
         threading.Thread(target=_send, daemon=True).start()
         return Response({"detail": "Ссылка на сброс отправляется"}, status=status.HTTP_202_ACCEPTED)
+
+
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = RegisterSerializer
+    permission_classes = [permissions.AllowAny]
+
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
@@ -128,20 +126,13 @@ class MeView(generics.RetrieveAPIView):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def change_password(request):
-    """
-    Смена пароля в сессии:
-      body: { "old_password": "...", "new_password": "..." }
-    """
     serializer = ChangePasswordSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-
     user = request.user
     old_password = serializer.validated_data["old_password"]
     new_password = serializer.validated_data["new_password"]
-
     if not user.check_password(old_password):
         return Response({"old_password": ["Неверный текущий пароль."]}, status=status.HTTP_400_BAD_REQUEST)
-
     user.set_password(new_password)
     user.save()
     return Response({"detail": "password_changed"})
@@ -160,7 +151,6 @@ def password_reset_request(request):
 
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-
     if getattr(settings, "FRONTEND_RESET_URL", ""):
         link = f"{settings.FRONTEND_RESET_URL}?uid={uid}&token={token}"
     else:
@@ -193,26 +183,8 @@ def password_reset_confirm(request):
         user = User.objects.get(pk=uid_int)
     except Exception:
         return Response({"detail": "Неверная ссылка"}, status=status.HTTP_400_BAD_REQUEST)
-
     if not default_token_generator.check_token(user, token):
         return Response({"detail": "Неверный или истёкший токен"}, status=status.HTTP_400_BAD_REQUEST)
-
     user.set_password(new_password)
     user.save()
     return Response({"detail": "Пароль обновлён"}, status=status.HTTP_200_OK)
-
-@api_view(["POST"])
-def change_password(request):
-    """Авторизованный пользователь меняет свой пароль, указав старый и новый."""
-    from .serializers import ChangePasswordSerializer
-    ser = ChangePasswordSerializer(data=request.data)
-    ser.is_valid(raise_exception=True)
-    user = request.user
-
-    if not user.check_password(ser.validated_data["old_password"]):
-        return Response({"detail": "Старый пароль неверен."}, status=status.HTTP_400_BAD_REQUEST)
-
-    new_pwd = ser.validated_data["new_password"]
-    user.set_password(new_pwd)
-    user.save(update_fields=["password"])
-    return Response({"detail": "Пароль изменён."})

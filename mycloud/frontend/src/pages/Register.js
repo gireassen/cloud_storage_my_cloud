@@ -2,76 +2,65 @@ import React, { useMemo, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 
-const PWD_RE = {
+// Индикатор требований (UI-подсказка), но НЕ блокирует отправку
+const PWD = {
   upper: /[A-Z]/,
   digit: /\d/,
   special: /[^\w\s]/,
 };
-function checkPasswordPolicy(pwd) {
-  const okLen = (pwd || "").length >= 6;
-  const okUp = PWD_RE.upper.test(pwd || "");
-  const okDi = PWD_RE.digit.test(pwd || "");
-  const okSp = PWD_RE.special.test(pwd || "");
-  return { okLen, okUp, okDi, okSp, ok: okLen && okUp && okDi && okSp };
+function checkPassword(pwd) {
+  const s = String(pwd || "");
+  return {
+    okLen: s.length >= 6,
+    okUp: PWD.upper.test(s),
+    okDi: PWD.digit.test(s),
+    okSp: PWD.special.test(s),
+  };
 }
 
 function humanizeErrors(data) {
-  if (!data) return "Ошибка регистрации";
-  if (typeof data === "string") return data;
-  if (data.detail) return data.detail;
-
-  const parts = [];
-  for (const [k, v] of Object.entries(data)) {
-    const text = Array.isArray(v) ? v.join(" ") : String(v);
-    const label =
-      k === "username"
-        ? "Логин"
-        : k === "email"
-        ? "Email"
-        : k === "password"
-        ? "Пароль"
-        : k;
-    parts.push(`${label}: ${text}`);
+  try {
+    if (!data) return "Ошибка регистрации";
+    if (typeof data === "string") return data;
+    if (data.detail) return String(data.detail);
+    if (Array.isArray(data)) return data.join("\n");
+    const parts = [];
+    for (const [k, v] of Object.entries(data)) {
+      const text = Array.isArray(v) ? v.join(" ") : String(v);
+      const label =
+        k === "username" ? "Логин" :
+        k === "email" ? "Email" :
+        k === "password" ? "Пароль" : k;
+      parts.push(`${label}: ${text}`);
+    }
+    return parts.join("\n") || "Ошибка регистрации";
+  } catch {
+    try { return JSON.stringify(data); } catch { return "Ошибка регистрации"; }
   }
-  return parts.join("\n") || "Ошибка регистрации";
 }
 
 export default function Register() {
-  const navigate = useNavigate();
+  const nav = useNavigate();
   const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
+  const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
 
-  const [msg, setMsg] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [msg, setMsg]           = useState("");
+  const [loading, setLoading]   = useState(false);
 
-  const pw = useMemo(() => checkPasswordPolicy(password), [password]);
+  const pw = useMemo(() => checkPassword(password), [password]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setMsg("");
-    if (!pw.ok) {
-      setMsg(
-        [
-          !pw.okLen && "Пароль должен быть не короче 6 символов.",
-          !pw.okUp && "Нужна хотя бы одна ЗАГЛАВНАЯ буква.",
-          !pw.okDi && "Нужна хотя бы одна цифра.",
-          !pw.okSp && "Нужен хотя бы один спецсимвол.",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      );
-      return;
-    }
-
     setLoading(true);
     try {
       await axios.post("/api/auth/register/", { username, email, password });
-
       setMsg("Регистрация успешна, переходим ко входу…");
-      setTimeout(() => navigate("/login"), 700);
+      setTimeout(() => nav("/login"), 700);
     } catch (e) {
-      setMsg(humanizeErrors(e?.response?.data));
+      const txt = humanizeErrors(e?.response?.data) || "Ошибка регистрации";
+      setMsg(String(txt));
     } finally {
       setLoading(false);
     }
@@ -89,7 +78,7 @@ export default function Register() {
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="username"
+            placeholder="латиница и цифры, 4–20, первая — буква"
             required
           />
         </div>
@@ -119,19 +108,11 @@ export default function Register() {
             required
             minLength={6}
           />
-          <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.4 }}>
-            <li style={{ color: pw.okLen ? "var(--ok, #46d369)" : "var(--warn, #ff6b6b)" }}>
-              ≥ 6 символов
-            </li>
-            <li style={{ color: pw.okUp ? "var(--ok, #46d369)" : "var(--warn, #ff6b6b)" }}>
-              ≥ 1 заглавная буква (A…Z)
-            </li>
-            <li style={{ color: pw.okDi ? "var(--ok, #46d369)" : "var(--warn, #ff6b6b)" }}>
-              ≥ 1 цифра (0…9)
-            </li>
-            <li style={{ color: pw.okSp ? "var(--ok, #46d369)" : "var(--warn, #ff6b6b)" }}>
-              ≥ 1 спецсимвол (например, !@#$%)
-            </li>
+          <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.35 }}>
+            <li style={{ color: pw.okLen ? "var(--ok,#46d369)" : "var(--warn,#ff6b6b)" }}>≥ 6 символов</li>
+            <li style={{ color: pw.okUp  ? "var(--ok,#46d369)" : "var(--warn,#ff6b6b)" }}>≥ 1 заглавная буква</li>
+            <li style={{ color: pw.okDi  ? "var(--ok,#46d369)" : "var(--warn,#ff6b6b)" }}>≥ 1 цифра</li>
+            <li style={{ color: pw.okSp  ? "var(--ok,#46d369)" : "var(--warn,#ff6b6b)" }}>≥ 1 спецсимвол</li>
           </ul>
         </div>
 
@@ -142,7 +123,7 @@ export default function Register() {
 
       {msg && (
         <div className="panel" style={{ marginTop: 12, whiteSpace: "pre-line" }}>
-          {msg}
+          {String(msg)}
         </div>
       )}
 

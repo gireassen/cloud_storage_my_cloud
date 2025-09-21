@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { meThunk } from "../store";
 import { api } from "../api";
 
+/* helpers */
 function formatBytes(bytes) {
   if (bytes === 0 || bytes === undefined || bytes === null) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -11,13 +12,11 @@ function formatBytes(bytes) {
   const num = val >= 10 ? Math.round(val) : Math.round(val * 10) / 10;
   return `${num} ${units[i]}`;
 }
-
 function formatDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString();
 }
-
 function toList(data) {
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.results)) return data.results;
@@ -25,10 +24,7 @@ function toList(data) {
 }
 async function copyToClipboard(text) {
   if (window.isSecureContext && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {}
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
   }
   const ta = document.createElement("textarea");
   ta.value = text;
@@ -42,28 +38,45 @@ async function copyToClipboard(text) {
 
   ta.select();
   let ok = false;
-  try {
-    ok = document.execCommand("copy");
-  } catch {
-    ok = false;
-  } finally {
-    document.body.removeChild(ta);
-    if (prevRange && selection) {
-      selection.removeAllRanges();
-      selection.addRange(prevRange);
-    }
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  document.body.removeChild(ta);
+  if (prevRange && selection) {
+    selection.removeAllRanges();
+    selection.addRange(prevRange);
   }
   return ok;
 }
+function csvEscape(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\n;\t]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function exportCsv(filename, columns, rows) {
+  const header = columns.map((c) => csvEscape(c.label)).join(",");
+  const body = rows
+    .map((row) =>
+      columns
+        .map((c) => csvEscape(typeof c.value === "function" ? c.value(row) : row[c.value]))
+        .join(",")
+    )
+    .join("\n");
+  const csv = header + "\n" + body;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
+/* простая модалка */
 function Modal({ open, title, children, onClose }) {
   if (!open) return null;
   return (
     <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{
         position: "fixed",
         inset: 0,
@@ -75,16 +88,15 @@ function Modal({ open, title, children, onClose }) {
       }}
     >
       <div
-        className="modal"
         style={{
           background: "var(--panel)",
           borderRadius: 10,
-          width: "min(720px, 92vw)",
+          width: "min(720px,92vw)",
           padding: 16,
           boxShadow: "0 10px 30px rgba(0,0,0,.35)",
         }}
       >
-        {title && <h3 style={{ margin: "6px 0 14px 0" }}>{title}</h3>}
+        {title && <h3 style={{ margin: "6px 0 14px" }}>{title}</h3>}
         {children}
       </div>
     </div>
@@ -102,10 +114,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState("");
 
-  // сортировка
   const [sortKey, setSortKey] = useState("uploaded_at");
   const [sortDir, setSortDir] = useState("desc");
-
   const header = (label, key) => {
     const active = sortKey === key;
     const arrow = active ? (sortDir === "asc" ? "↑" : "↓") : "";
@@ -115,31 +125,20 @@ export default function Dashboard() {
       </th>
     );
   };
-
   const sortBy = (key) => {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
+    else { setSortKey(key); setSortDir("asc"); }
   };
-
   const keyExtract = (row, key) => {
     switch (key) {
-      case "original_name":
-        return (row.original_name || "").toLowerCase();
-      case "size":
-        return row.size ?? 0;
+      case "original_name": return (row.original_name || "").toLowerCase();
+      case "size": return row.size ?? 0;
       case "uploaded_at":
-      case "created_at":
-        return new Date(row.uploaded_at || row.created_at || 0).getTime();
-      case "description":
-        return (row.description || "").toLowerCase();
-      default:
-        return row[key];
+      case "created_at": return new Date(row.uploaded_at || row.created_at || 0).getTime();
+      case "description": return (row.description || "").toLowerCase();
+      default: return row[key];
     }
   };
-
   const getSorted = (arr) => {
     const data = Array.isArray(arr) ? [...arr] : toList(arr);
     return data.sort((a, b) => {
@@ -152,25 +151,22 @@ export default function Dashboard() {
     });
   };
 
-  // модалка редактирования описания файла
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [editText, setEditText] = useState("");
 
-  // модалка сброса пароля
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
-    dispatch(meThunk());
-    loadFiles();
+    if (token) {
+      dispatch(meThunk());
+      loadFiles();
+    }
   }, [token]);
 
-  useEffect(() => {
-    setResetEmail(user?.email || "");
-  }, [user]);
+  useEffect(() => { setResetEmail(user?.email || ""); }, [user]);
 
   const loadFiles = async () => {
     const { data } = await api(token).get("/files/");
@@ -186,9 +182,7 @@ export default function Dashboard() {
       form.append("file", file);
       if (desc) form.append("description", desc);
 
-      await api(token).post("/files/", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await api(token).post("/files/", form, { headers: { "Content-Type": "multipart/form-data" } });
 
       setFile(null);
       setDesc("");
@@ -208,7 +202,6 @@ export default function Dashboard() {
     await loadFiles();
   };
 
-  /** Создание публичной ссылки + копирование с фолбеком */
   const createShareLink = async (id) => {
     try {
       const { data } = await api(token).post(`/links/`, { file_id: id });
@@ -219,15 +212,10 @@ export default function Dashboard() {
 
       const ok = await copyToClipboard(fullUrl);
       if (ok) setToast("Ссылка скопирована в буфер обмена");
-      else {
-        window.prompt("Скопируйте ссылку вручную:", fullUrl);
-        setToast("Ссылка готова");
-      }
+      else { window.prompt("Скопируйте ссылку вручную:", fullUrl); setToast("Ссылка готова"); }
     } catch {
       setToast("Не удалось создать ссылку");
-    } finally {
-      setTimeout(() => setToast(""), 1500);
-    }
+    } finally { setTimeout(() => setToast(""), 1500); }
   };
 
   const dl = async (id, name) => {
@@ -250,55 +238,26 @@ export default function Dashboard() {
     }
   };
 
-  const openEdit = (f) => {
-    setEditTarget(f);
-    setEditText(f.description || "");
-    setEditOpen(true);
-  };
-  const closeEdit = () => {
-    setEditOpen(false);
-    setEditTarget(null);
-    setEditText("");
-  };
+  const openEdit = (f) => { setEditTarget(f); setEditText(f.description || ""); setEditOpen(true); };
+  const closeEdit = () => { setEditOpen(false); setEditTarget(null); setEditText(""); };
   const saveEdit = async () => {
     if (!editTarget) return;
     await api(token).patch(`/files/${editTarget.id}/`, { description: editText });
-    setFiles((prev) =>
-      prev.map((x) => (x.id === editTarget.id ? { ...x, description: editText } : x))
-    );
+    setFiles((prev) => prev.map((x) => (x.id === editTarget.id ? { ...x, description: editText } : x)));
     closeEdit();
   };
 
-  // Сброс пароля (по email)
-  const openReset = () => {
-    setResetEmail(user?.email || "");
-    setResetOpen(true);
-  };
-  const closeReset = () => {
-    if (resetLoading) return;
-    setResetOpen(false);
-  };
+  const openReset = () => { setResetEmail(user?.email || ""); setResetOpen(true); };
+  const closeReset = () => { if (!resetLoading) setResetOpen(false); };
   const submitReset = async (e) => {
     e?.preventDefault?.();
-    if (!resetEmail) {
-      setToast("Укажите email");
-      setTimeout(() => setToast(""), 1500);
-      return;
-    }
+    if (!resetEmail) { setToast("Укажите email"); setTimeout(() => setToast(""), 1500); return; }
     setResetLoading(true);
-    try {
-      await api(token).post("/auth/password/reset-request/", { email: resetEmail });
-      setToast("Если email зарегистрирован, письмо отправлено");
-      setResetOpen(false);
-    } catch {
-      setToast("Не удалось отправить письмо");
-    } finally {
-      setResetLoading(false);
-      setTimeout(() => setToast(""), 1800);
-    }
+    try { await api(token).post("/auth/password/reset-request/", { email: resetEmail }); setToast("Если email зарегистрирован, письмо отправлено"); setResetOpen(false); }
+    catch { setToast("Не удалось отправить письмо"); }
+    finally { setResetLoading(false); setTimeout(() => setToast(""), 1800); }
   };
 
-  // ESC закрывает модалки
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
@@ -310,62 +269,70 @@ export default function Dashboard() {
     return () => window.removeEventListener("keydown", onKey);
   }, [editOpen, resetOpen]);
 
-  if (!token)
+  const filesSorted = useMemo(() => getSorted(files), [files, sortKey, sortDir]);
+
+  if (!token) {
     return (
       <div className="container">
         <h2>Требуется вход</h2>
       </div>
     );
+  }
 
   return (
-    <div className="container" style={{ paddingBottom: 60 }}>
+    <div className="container" style={{ paddingBottom: 60, maxWidth: "1400px" }}>
       <div className="panel" style={{ display: "flex", justifyContent: "space-between" }}>
         <div>
           <h1 style={{ margin: 0 }}>Личный кабинет</h1>
           <div style={{ marginTop: 10 }}>
-            Пользователь: <b>{user?.username}</b>{" "}
-            {user?.email ? `(${user.email})` : ""}
+            Пользователь: <b>{user?.username}</b> {user?.email ? `(${user.email})` : ""}
           </div>
         </div>
-        <div>
-          <button className="btn" onClick={openReset}>
-            Сбросить пароль
-          </button>
-        </div>
+        <div><button className="btn" onClick={openReset}>Сбросить пароль</button></div>
       </div>
 
       <div className="panel" style={{ marginTop: 18 }}>
         <h3 style={{ marginTop: 0 }}>Загрузка файла</h3>
         <form onSubmit={upload} className="grid" style={{ gap: 12 }}>
-          <div className="field">
-            <input type="file" onChange={(e) => setFile(e.target.files[0])} />
-          </div>
+          <div className="field"><input type="file" onChange={(e) => setFile(e.target.files[0])} /></div>
           <div className="field" style={{ flex: 1 }}>
-            <input
-              className="input"
-              placeholder="Описание (необязательно)"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-            />
+            <input className="input" placeholder="Описание (необязательно)" value={desc} onChange={(e) => setDesc(e.target.value)} />
           </div>
-          <div>
-            <button className="btn" type="submit" disabled={loading}>
-              {loading ? <span className="spinner" /> : "Загрузить"}
-            </button>
-          </div>
+          <div><button className="btn" type="submit" disabled={loading}>{loading ? <span className="spinner" /> : "Загрузить"}</button></div>
         </form>
       </div>
 
       <div className="panel" style={{ marginTop: 18 }}>
-        <h3 style={{ marginTop: 0 }}>Мои файлы</h3>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Мои файлы</h3>
+          <button
+            className="btn"
+            onClick={() =>
+              exportCsv(
+                `my_files_${new Date().toISOString().replace(/[:.]/g, "-")}.csv`,
+                [
+                  { label: "id", value: (f) => f.id },
+                  { label: "original_name", value: (f) => f.original_name || "" },
+                  { label: "size", value: (f) => f.size ?? 0 },
+                  { label: "uploaded_at", value: (f) => f.uploaded_at || f.created_at || "" },
+                  { label: "description", value: (f) => f.description || "" },
+                ],
+                filesSorted
+              )
+            }
+          >
+            Экспорт моих файлов (CSV)
+          </button>
+        </div>
+
         <div className="table" style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", tableLayout: "fixed", minWidth: 780 }}>
+          <table style={{ width: "100%", tableLayout: "fixed", minWidth: 1150 }}>
             <colgroup>
-              <col style={{ width: "40%" }} />  {/* Имя */}
-              <col style={{ width: "12%" }} />  {/* Размер */}
-              <col style={{ width: "20%" }} />  {/* Дата */}
-              <col style={{ width: "18%" }} />  {/* Описание */}
-              <col style={{ width: "10%", minWidth: 240 }} /> {/* Действия (тянется) */}
+              <col style={{ width: "44%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "6%", minWidth: 260 }} />
             </colgroup>
             <thead>
               <tr>
@@ -377,16 +344,12 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {getSorted(files).map((f) => (
+              {filesSorted.map((f) => (
                 <tr key={f.id}>
-                  <td style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.original_name}
-                  </td>
+                  <td style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.original_name}</td>
                   <td>{formatBytes(f.size)}</td>
                   <td>{formatDate(f.uploaded_at || f.created_at)}</td>
-                  <td style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.description || "—"}
-                  </td>
+                  <td style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.description || "—"}</td>
                   <td style={{ minWidth: 260 }}>
                     <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", justifyContent: "flex-start" }}>
                       <button className="btn" onClick={() => dl(f.id, f.original_name)}>Скачать</button>
@@ -397,7 +360,7 @@ export default function Dashboard() {
                   </td>
                 </tr>
               ))}
-              {getSorted(files).length === 0 && (
+              {filesSorted.length === 0 && (
                 <tr>
                   <td colSpan={5} style={{ textAlign: "center", padding: 18, color: "var(--muted)" }}>
                     Пока нет файлов
@@ -433,11 +396,8 @@ export default function Dashboard() {
           <div className="field">
             <label className="label">Email для получения ссылки</label>
             <input
-              className="input"
-              type="email"
-              placeholder="you@example.com"
-              value={resetEmail}
-              onChange={(e) => setResetEmail(e.target.value)}
+              className="input" type="email" placeholder="you@example.com"
+              value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}
             />
             <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
               На этот адрес придёт письмо со ссылкой для смены пароля.
